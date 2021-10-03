@@ -127,7 +127,9 @@ void logline(char *logbuf) {
     perror(fname);
     exit(-999);
   }
-  fprintf(f, "%02d:%02d:%02d\t", now.tm_hour, now.tm_min, now.tm_sec);
+  if (logbuf[0] != '\n') {
+    fprintf(f, "%02d:%02d:%02d\t", now.tm_hour, now.tm_min, now.tm_sec);
+  }
   fputs(logbuf, f);
   fclose(f);
 }
