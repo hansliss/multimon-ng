@@ -123,7 +123,7 @@ void logline(const char *fmt, ...) {
   va_start(args, fmt);
   time(&t);
   localtime_r(&t, &now);
-  snprintf(fname, sizeof(fname), "%s/%04d-%02d-%02d", logdir, now.tm_year + 1900, now.tm_mon + 1, now.tm_sec);
+  snprintf(fname, sizeof(fname), "%s/multimon_%04d-%02d-%02d.log", logdir, now.tm_year + 1900, now.tm_mon + 1, now.tm_sec);
   FILE *f=fopen(fname, "w");
   if (!f) {
     perror(fname);
