@@ -168,9 +168,11 @@ void _verbprintf(int verb_level, const char *fmt, ...)
         is_startline = true;
 
     vfprintf(stdout, fmt, args);
-    logline(fmt, args);
     if(!dont_flush)
         fflush(stdout);
+    va_end(args);
+    va_start(args, fmt);
+    logline(fmt, args);
     va_end(args);
 }
 
