@@ -112,15 +112,13 @@ extern bool cw_disable_auto_timing;
 
 char *logdir=NULL;
 
-void logline(const char *fmt, ...) {
+void logline(char *logbuf) {
   static char fname[512];
   time_t t;
   struct tm now;
   if (!logdir) {
     return;
   }
-  va_list args;
-  va_start(args, fmt);
   time(&t);
   localtime_r(&t, &now);
   snprintf(fname, sizeof(fname), "%s/multimon_%04d-%02d-%02d.log", logdir, now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
@@ -130,9 +128,8 @@ void logline(const char *fmt, ...) {
     exit(-999);
   }
   fprintf(f, "%02d:%02d:%02d\t", now.tm_hour, now.tm_min, now.tm_sec);
-  vfprintf(f, fmt, args);
+  fputs(logbuf, f);
   fclose(f);
-  va_end(args);
 }
 
 void quit(void);
@@ -141,6 +138,7 @@ void quit(void);
 
 void _verbprintf(int verb_level, const char *fmt, ...)
 {
+  static char logbuf[8192];
 	char time_buf[20];
 	time_t t;
 	struct tm* tm_info;
@@ -167,13 +165,12 @@ void _verbprintf(int verb_level, const char *fmt, ...)
     if (NULL != strchr(fmt,'\n')) /* detect end of line in stream */
         is_startline = true;
 
-    vfprintf(stdout, fmt, args);
+    vsprintf(logbuf, fmt, args);
+    va_end(args);
+    fputs(logbuf, stdout);
     if(!dont_flush)
         fflush(stdout);
-    va_end(args);
-    va_start(args, fmt);
-    logline(fmt, args);
-    va_end(args);
+    logline(logbuf);
 }
 
 /* ---------------------------------------------------------------------- */
