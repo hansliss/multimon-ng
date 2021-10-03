@@ -124,7 +124,7 @@ void logline(const char *fmt, ...) {
   time(&t);
   localtime_r(&t, &now);
   snprintf(fname, sizeof(fname), "%s/multimon_%04d-%02d-%02d.log", logdir, now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
-  FILE *f=fopen(fname, "w");
+  FILE *f=fopen(fname, "a");
   if (!f) {
     perror(fname);
     exit(-999);
