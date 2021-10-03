@@ -110,6 +110,31 @@ extern int cw_threshold;
 extern bool cw_disable_auto_threshold;
 extern bool cw_disable_auto_timing;
 
+char *logdir=NULL;
+
+void logline(const char *fmt, ...) {
+  static char fname[512];
+  time_t t;
+  struct tm now;
+  if (!logdir) {
+    return;
+  }
+  va_list args;
+  va_start(args, fmt);
+  time(&t);
+  localtime_r(&t, &now);
+  snprintf(fname, sizeof(fname), "%s/%04d-%02d-%02d", logdir, now.tm_year + 1900, now.tm_mon + 1, now.tm_sec);
+  FILE *f=fopen(fname, "w");
+  if (!f) {
+    perror(fname);
+    exit(-999);
+  }
+  fprintf(f, "%02d:%02d:%02d\t", now.tm_hour, now.tm_min, now.tm_sec);
+  vfprintf(f, fmt, args);
+  fclose(f);
+  va_end(args);
+}
+
 void quit(void);
 
 /* ---------------------------------------------------------------------- */
@@ -621,7 +646,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
       };
 
-    while ((c = getopt_long(argc, argv, "t:a:s:v:f:b:C:o:d:g:cqhAmrnjeuipxy", long_options, NULL)) != EOF) {
+    while ((c = getopt_long(argc, argv, "t:a:s:v:f:b:C:o:d:g:cqhAmrnjeuipxyL:", long_options, NULL)) != EOF) {
         switch (c) {
         case 'h':
         case '?':
@@ -795,6 +820,13 @@ intypefound:
 	case 'l':
 	    label = optarg;
 	    break;
+
+	case 'L':
+	  logdir = optarg;
+	  while (strlen(logdir) && logdir[strlen(logdir) - 1] == '/') {
+	    logdir[strlen(logdir) - 1] = '\0';
+	  }
+	  break;
         }
     }
 
