@@ -168,6 +168,7 @@ void _verbprintf(int verb_level, const char *fmt, ...)
         is_startline = true;
 
     vfprintf(stdout, fmt, args);
+    logline(fmt, args);
     if(!dont_flush)
         fflush(stdout);
     va_end(args);
@@ -826,6 +827,7 @@ intypefound:
 	  while (strlen(logdir) && logdir[strlen(logdir) - 1] == '/') {
 	    logdir[strlen(logdir) - 1] = '\0';
 	  }
+	  fprintf(stderr, "Logging to %s\n", logdir);
 	  break;
         }
     }
