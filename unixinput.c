@@ -116,6 +116,7 @@ void logline(char *logbuf) {
   static char fname[512];
   time_t t;
   struct tm now;
+  static int newline=1;
   if (!logdir) {
     return;
   }
@@ -127,8 +128,12 @@ void logline(char *logbuf) {
     perror(fname);
     exit(-999);
   }
-  if (logbuf[0] != '\n') {
+  if (newline) {
     fprintf(f, "%02d:%02d:%02d\t", now.tm_hour, now.tm_min, now.tm_sec);
+    newline = 0;
+  }
+  if (strchr(logbuf, '\n')) {
+    newline = 1;
   }
   fputs(logbuf, f);
   fclose(f);
