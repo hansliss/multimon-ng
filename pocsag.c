@@ -448,7 +448,7 @@ static unsigned int print_msg_numeric(struct l2_state_pocsag *rx, char* buff, un
     return guesstimate;
 }
 
-static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size, unsigned char *rawbuf, int *rawsize)
 {
     uint32_t data = 0;
     int datalen = 0;
@@ -459,6 +459,9 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
     unsigned char curchr;
     char *tstr;
     int guesstimate = 0;
+
+    memcpy(rawbuf, rx->buffer, ((*rawsize) > len/2)?(len/2):(*rawsize));
+    *rawsize = len/2;
 
     while (len > 0)
     {
@@ -480,6 +483,7 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
         curchr = ((curchr & 0xf0) >> 4) | ((curchr & 0x0f) << 4);
         curchr = ((curchr & 0xcc) >> 2) | ((curchr & 0x33) << 2);
         curchr = ((curchr & 0xaa) >> 1) | ((curchr & 0x55) << 1);
+
 
         guesstimate += guesstimate_alpha(curchr);
 
@@ -579,14 +583,17 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
             char num_string[1024];
             char alpha_string[1024];
             char skyper_string[1024];
+	    static unsigned char rawmsg[4096];
+	    static char hexstring[12288];
             int guess_num = 0;
             int guess_alpha = 0;
             int guess_skyper = 0;
             int unsure = 0;
             int func = 0;
+	    int rawsize = sizeof(rawmsg);
 
             guess_num = print_msg_numeric(&s->l2.pocsag, num_string, sizeof(num_string));
-            guess_alpha = print_msg_alpha(&s->l2.pocsag, alpha_string, sizeof(alpha_string));
+            guess_alpha = print_msg_alpha(&s->l2.pocsag, alpha_string, sizeof(alpha_string), rawmsg, &rawsize);
             guess_skyper = print_msg_skyper(&s->l2.pocsag, skyper_string, sizeof(skyper_string));
 
             func = s->l2.pocsag.function;
@@ -621,7 +628,14 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
                     verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
                 if(pocsag_mode == POCSAG_MODE_AUTO)
                     verbprintf(3, "Certainty: %5i  ", guess_alpha);
-                verbprintf(0, "Alpha:   %s", alpha_string);
+                verbprintf(0, "Alpha:   %s  ", alpha_string);
+		if (guess_alpha < 10 && rawsize > 0) {
+		  for (int i=0; i < rawsize; i++) {
+		    sprintf(&(hexstring[3*i]), "%02x ", rawmsg[i]);
+		  }
+		  verbprintf(0, "Hex:   %s  ", hexstring);
+		}
+
                 if(!sync) verbprintf(2,"<LOST SYNC>");
                 verbprintf(0,"\n");
             }
