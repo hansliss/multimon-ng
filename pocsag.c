@@ -134,13 +134,13 @@ static unsigned int pocsag_syndrome(uint32_t data)
 			"<EOT>", 	//  0x4
 			"<ENQ>", 	//  0x5
 			"<ACK>", 	//  0x6
-			"<BEL>", 	//  0x7
+			"\\g", 		//  0x7
 			"<BS>",  	//  0x8
-			"<HT>",  	//  0x9
-			"<LF>",  	//  0xa
+			"\\t",  	//  0x9
+			"\\n",  	//  0xa
 			"<VT>",  	//  0xb
 			"<FF>",  	//  0xc
-			"<CR>",  	//  0xd
+			"\\r",  	//  0xd
 			"<SO>",  	//  0xe
 			"<SI>",  	//  0xf
 			"<DLE>", 	// 0x10
@@ -400,12 +400,12 @@ static char *translate_alpha(unsigned char chr)
 /* ---------------------------------------------------------------------- */
 static int guesstimate_alpha(const unsigned char cp)
 {
-    if((cp > 0 && cp < 32) || cp == 127)
+    if((cp > 0 && cp != 12 && cp != 15 && cp < 32) || cp == 127)
         return -5; // Non printable characters are uncommon
     else if((cp > 32 && cp < 48)
             || (cp > 57 && cp < 65)
-            || (cp > 90 && cp < 97)
-            || (cp > 122 && cp < 127))
+            || (cp > 93 && cp < 97)
+            || (cp > 125 && cp < 127))
         return -2; // Penalize special characters
     else
         return 1;
@@ -914,12 +914,46 @@ returnfree:
     }
 }
 
+// t0000000 00000000 00000ccc cccccccp
+
+int check_crc(const uint32_t pocsag_word) {
+  if (pocsag_word == POCSAG_IDLE) {
+    return 1;
+  }
+  const uint32_t generator = 0x0769;
+  const uint32_t crc_bits = 10;
+  uint32_t denominator = generator << 20;
+  uint32_t msg = (pocsag_word & 0x7ffff800) >> (11 - crc_bits);
+  for (int i=0; i<22; i++) {
+    if ((msg & (1 << (30-i))) != 0) {
+      msg ^= denominator;
+    }
+    denominator >>= 1;
+  }
+  //  fprintf(stderr, "CRC = %04x, should be %04x\n", (pocsag_word >> 1) & 0x3FF, msg & 0x3FF);
+  /*  if (((pocsag_word >> 1) & 0x3FF) != (msg & 0x3FF)) {
+    fprintf(stderr, "CRC error!\n");
+    }*/
+  return (((pocsag_word >> 1) & 0x3FF) == (msg & 0x3FF));
+}
+
+int check_parity(const uint32_t pocsag_word) {
+  uint32_t p = pocsag_word ^ (pocsag_word >> 16);
+  p ^= (p >> 8);
+  p ^= (p >> 4);
+  p &= 0x0f;
+  /*  if (!(((0x6996 >> p) & 1) ^ 1)) {
+    fprintf(stderr, "Parity error!\n");
+    }*/
+  return ((0x6996 >> p) & 1) ^ 1;
+}
+
 static inline bool word_complete(struct demod_state *s)
 {    
     // Do nothing for 31 bits
     // When the word is complete let the program counter pass
     s->l2.pocsag.rx_bit = (s->l2.pocsag.rx_bit + 1) % 32;
-    return s->l2.pocsag.rx_bit == 0;
+    return (s->l2.pocsag.rx_bit == 0/* && check_crc(s->l2.pocsag.rx_data) && check_parity(s->l2.pocsag.rx_data)*/);
 }
 
 static inline bool is_sync(const uint32_t * const rx_data)
