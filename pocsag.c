@@ -402,10 +402,16 @@ static int guesstimate_alpha(const unsigned char cp)
 {
     if((cp > 0 && cp != 12 && cp != 15 && cp < 32) || cp == 127)
         return -5; // Non printable characters are uncommon
-    else if((cp > 32 && cp < 48)
-            || (cp > 57 && cp < 65)
-            || (cp > 93 && cp < 97)
-            || (cp > 125 && cp < 127))
+    else if(((cp > ' ' && cp < '0')
+            || (cp > '9' && cp < 'A')
+            || (cp > ']' && cp < 'a')
+	     || (cp > '}' && cp < 127)) &&
+	    cp != '_' &&
+	    cp != '-' &&
+	    cp != '.' &&
+	    cp != ',' &&
+	    cp != '=' &&
+	    cp != '/')
         return -2; // Penalize special characters
     else
         return 1;
