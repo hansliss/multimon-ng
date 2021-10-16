@@ -95,7 +95,6 @@ static char *label = NULL;
 
 extern bool fms_justhex;
 
-extern int pocsag_mode;
 extern int pocsag_invert_input;
 extern int pocsag_error_correction;
 extern int pocsag_show_partial_decodes;
@@ -614,11 +613,8 @@ static const char usage_str[] = "\n"
         "  -n         : Don't flush stdout, increases performance.\n"
         "  -j         : FMS: Just output hex data and CRC, no parsing.\n"
         "  -e         : POCSAG: Hide empty messages.\n"
-        "  -u         : POCSAG: Heuristically prune unlikely decodes.\n"
         "  -i         : POCSAG: Inverts the input samples. Try this if decoding fails.\n"
         "  -p         : POCSAG: Show partially received messages.\n"
-        "  -f <mode>  : POCSAG: Overrides standards and forces decoding of data as <mode>\n"
-        "                       (<mode> can be 'numeric', 'alpha', 'skyper' or 'auto')\n"
         "  -b <level> : POCSAG: BCH bit error correction level. Set 0 to disable, default is 2.\n"
         "                       Lower levels increase performance and lower false positives.\n"
         "  -C <cs>    : POCSAG: Set Charset.\n"
@@ -692,10 +688,6 @@ int main(int argc, char *argv[])
             pocsag_show_partial_decodes = 1;
             break;
 
-        case'u':
-            pocsag_heuristic_pruning = 1;
-            break;
-
         case'e':
             pocsag_prune_empty = 1;
             break;
@@ -764,21 +756,7 @@ intypefound:
             for (i = 0; (unsigned int) i < NUMDEMOD; i++)
                 MASK_RESET(i);
             break;
-            
-        case 'f':
-            if(!pocsag_mode)
-            {
-                if(!strncmp("numeric",optarg, sizeof("numeric")))
-                    pocsag_mode = POCSAG_MODE_NUMERIC;
-                else if(!strncmp("alpha",optarg, sizeof("alpha")))
-                    pocsag_mode = POCSAG_MODE_ALPHA;
-                else if(!strncmp("skyper",optarg, sizeof("skyper")))
-                    pocsag_mode = POCSAG_MODE_SKYPER;
-                else if(!strncmp("auto",optarg, sizeof("auto")))
-                    pocsag_mode = POCSAG_MODE_AUTO;
-            }else fprintf(stderr, "a POCSAG mode has already been selected!\n");
-            break;
-            
+
         case 'C':
     		if (!pocsag_init_charset(optarg))
     			errflg++;
@@ -824,18 +802,18 @@ intypefound:
             cw_disable_auto_timing = true;
             break;
             
-	case 'l':
-	    label = optarg;
-	    break;
+        case 'l':
+            label = optarg;
+            break;
 
-	case 'L':
-	  logdir = optarg;
-	  while (strlen(logdir) && logdir[strlen(logdir) - 1] == '/') {
-	    logdir[strlen(logdir) - 1] = '\0';
-	  }
-	  fprintf(stderr, "Logging to %s\n", logdir);
-	  break;
-        }
+        case 'L':
+          logdir = optarg;
+          while (strlen(logdir) && logdir[strlen(logdir) - 1] == '/') {
+            logdir[strlen(logdir) - 1] = '\0';
+          }
+          fprintf(stderr, "Logging to %s\n", logdir);
+          break;
+            }
     }
 
 
