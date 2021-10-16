@@ -44,15 +44,6 @@ extern const float costabf[0x400];
 
 /* ---------------------------------------------------------------------- */
 
-enum
-{
-    POCSAG_MODE_STANDARD = 0,
-    POCSAG_MODE_NUMERIC = 1,
-    POCSAG_MODE_ALPHA = 2,
-    POCSAG_MODE_SKYPER = 3,
-    POCSAG_MODE_AUTO = 4,
-};
-
 enum EAS_L2_State
 {
     EAS_L2_IDLE = 0,
@@ -131,6 +122,8 @@ struct demod_state {
             uint32_t pocsag_total_bits_received;
             uint32_t pocsag_bits_processed_while_synced;
             uint32_t pocsag_bits_processed_while_not_synced;
+	  uint32_t orig_words[17];
+	  int saved_words;
         } pocsag;
     } l2;
     union {

@@ -95,7 +95,6 @@ static char *label = NULL;
 
 extern bool fms_justhex;
 
-extern int pocsag_mode;
 extern int pocsag_invert_input;
 extern int pocsag_error_correction;
 extern int pocsag_show_partial_decodes;
@@ -763,20 +762,6 @@ intypefound:
             mask_first = 0;
             for (i = 0; (unsigned int) i < NUMDEMOD; i++)
                 MASK_RESET(i);
-            break;
-            
-        case 'f':
-            if(!pocsag_mode)
-            {
-                if(!strncmp("numeric",optarg, sizeof("numeric")))
-                    pocsag_mode = POCSAG_MODE_NUMERIC;
-                else if(!strncmp("alpha",optarg, sizeof("alpha")))
-                    pocsag_mode = POCSAG_MODE_ALPHA;
-                else if(!strncmp("skyper",optarg, sizeof("skyper")))
-                    pocsag_mode = POCSAG_MODE_SKYPER;
-                else if(!strncmp("auto",optarg, sizeof("auto")))
-                    pocsag_mode = POCSAG_MODE_AUTO;
-            }else fprintf(stderr, "a POCSAG mode has already been selected!\n");
             break;
             
         case 'C':

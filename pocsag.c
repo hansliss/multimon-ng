@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/time.h>
 
 /* ---------------------------------------------------------------------- */
 
@@ -57,7 +58,6 @@
 #define POSCAG
 /* ---------------------------------------------------------------------- */
 
-int pocsag_mode = POCSAG_MODE_STANDARD;
 int pocsag_invert_input = 0;
 int pocsag_error_correction = 2;
 int pocsag_show_partial_decodes = 0;
@@ -384,7 +384,7 @@ bool pocsag_init_charset(char *charset)
 	}
 	else
 	{
-		fprintf(stderr, "Error: invalid POCSAG charset %s\n", charset);
+	  fprintf(stderr, "Error: invalid POCSAG charset %s\n", charset);
 		fprintf(stderr, "Use: US,FR,DE,SE,SI\n");
 		charset = "US";
 		return false; 
@@ -398,46 +398,13 @@ static char *translate_alpha(unsigned char chr)
 }
 
 /* ---------------------------------------------------------------------- */
-static int guesstimate_alpha(const unsigned char cp)
-{
-    if((cp > 0 && cp != 12 && cp != 15 && cp < 32) || cp == 127)
-        return -5; // Non printable characters are uncommon
-    else if(((cp > ' ' && cp < '0')
-            || (cp > '9' && cp < 'A')
-            || (cp > ']' && cp < 'a')
-	     || (cp > '}' && cp < 127)) &&
-	    cp != '_' &&
-	    cp != '-' &&
-	    cp != '.' &&
-	    cp != ',' &&
-	    cp != '=' &&
-	    cp != '/')
-        return -2; // Penalize special characters
-    else
-        return 1;
-}
 
-static int guesstimate_numeric(const unsigned char cp, int pos)
-{
-    if(cp == 'U')
-        return -10;
-    else if(cp == '[' || cp == ']')
-        return -5;
-    else if(cp == ' ' || cp == '.' || cp == '-')
-        return -2;
-    else if(pos < 10) // Penalize long messages
-        return 5;
-    else
-        return 0;
-}
-
-static unsigned int print_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+static void print_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
     static const char *conv_table = "084 2.6]195-3U7[";
     unsigned char *bp = rx->buffer;
     int len = rx->numnibbles;
     char* cp = buff;
-    unsigned int guesstimate = 0;
 
     if ( (unsigned int) len >= size)
         len = size-1;
@@ -449,12 +416,9 @@ static unsigned int print_msg_numeric(struct l2_state_pocsag *rx, char* buff, un
     *cp = '\0';
 
     cp = buff;
-    for(int i = 0; *(cp+i); i++)
-        guesstimate += guesstimate_numeric(*(cp+i), i);
-    return guesstimate;
 }
 
-static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size, unsigned char *rawbuf, int *rawsize)
+static void print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
     uint32_t data = 0;
     int datalen = 0;
@@ -464,10 +428,6 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
     int buffree = size-1;
     unsigned char curchr;
     char *tstr;
-    int guesstimate = 0;
-
-    memcpy(rawbuf, rx->buffer, ((*rawsize) > len/2)?(len/2):(*rawsize));
-    *rawsize = len/2;
 
     while (len > 0)
     {
@@ -490,9 +450,6 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
         curchr = ((curchr & 0xcc) >> 2) | ((curchr & 0x33) << 2);
         curchr = ((curchr & 0xaa) >> 1) | ((curchr & 0x55) << 1);
 
-
-        guesstimate += guesstimate_alpha(curchr);
-
         tstr = translate_alpha(curchr);
         if (tstr)
         {
@@ -509,61 +466,23 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
         }
     }
     *cp = '\0';
-
-    return guesstimate;
 }
 
-/* ---------------------------------------------------------------------- */
-
-static int print_msg_skyper(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+static void print_msg_binary(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
-    uint32_t data = 0;
-    int datalen = 0;
-    unsigned char *bp = rx->buffer;
-    int len = rx->numnibbles;
-    char* cp = buff;
-    int buffree = size-1;
-    unsigned char curchr;
-    char *tstr;
-    unsigned int guesstimate = 0;
-
-    while (len > 0) {
-        while (datalen < 7 && len > 0) {
-            if (len == 1) {
-                data = (data << 4) | ((*bp >> 4) & 0xf);
-                datalen += 4;
-                len = 0;
-            } else {
-                data = (data << 8) | *bp++;
-                datalen += 8;
-                len -= 2;
-            }
-        }
-        if (datalen < 7)
-            continue;
-        datalen -= 7;
-        curchr = ((data >> datalen) & 0x7f) << 1;
-        curchr = ((curchr & 0xf0) >> 4) | ((curchr & 0x0f) << 4);
-        curchr = ((curchr & 0xcc) >> 2) | ((curchr & 0x33) << 2);
-        curchr = ((curchr & 0xaa) >> 1) | ((curchr & 0x55) << 1);
-
-        guesstimate += guesstimate_alpha(curchr-1);
-
-        tstr = translate_alpha(curchr-1);
-        if (tstr) {
-            int tlen = strlen(tstr);
-            if (buffree >= tlen) {
-                memcpy(cp, tstr, tlen);
-                cp += tlen;
-                buffree -= tlen;
-            }
-        } else if (buffree > 0) {
-            *cp++ = curchr-1;
-            buffree--;
-        }
+  char *bp = buff;
+  int len;
+  buff[0] = '\0';
+  for (int i=0; i < rx->saved_words && size; i++) {
+    if (i > 0) {
+      strcat(bp, ",");
+      bp++;
+      size--;
     }
-    *cp = '\0';
-    return guesstimate;
+    len = sprintf(bp, "%04x", rx->orig_words[i]);
+    size -= len;
+    bp += len;
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -586,79 +505,36 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
         }
         else
         {
-            char num_string[1024];
-            char alpha_string[1024];
-            char skyper_string[1024];
-	    static unsigned char rawmsg[4096];
-	    static char hexstring[12288];
-            int guess_num = 0;
-            int guess_alpha = 0;
-            int guess_skyper = 0;
-            int unsure = 0;
+            char string[1024];
             int func = 0;
-	    int rawsize = sizeof(rawmsg);
-
-            guess_num = print_msg_numeric(&s->l2.pocsag, num_string, sizeof(num_string));
-            guess_alpha = print_msg_alpha(&s->l2.pocsag, alpha_string, sizeof(alpha_string), rawmsg, &rawsize);
-            guess_skyper = print_msg_skyper(&s->l2.pocsag, skyper_string, sizeof(skyper_string));
-
             func = s->l2.pocsag.function;
 
-            if(guess_num < 20 && guess_alpha < 20 && guess_skyper < 20)
-            {
-                if(pocsag_heuristic_pruning)
-                    return;
-                unsure = 1;
-            }
+	    if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
+	      verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
+			 s->l2.pocsag.address, s->l2.pocsag.function);
+	    else
+	      verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
+	    switch (func) {
+	    case 0:
+	      print_msg_numeric(&s->l2.pocsag, string, sizeof(string));
+	      verbprintf(0, "Numeric: %s", string);
+	      break;
+	    case 1:
+	    case 2:
+	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
+	      verbprintf(0, "Binary:  %s  ", string);
+	    case 3:
+	      print_msg_alpha(&s->l2.pocsag, string, sizeof(string));
+	      verbprintf(0, "Alpha:   %s  ", string);
+	      break;
+	    default:
+	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
+	      verbprintf(0, "Binary:  %s  ", string);
+	      break;
+	    }
 
-            if((pocsag_mode == POCSAG_MODE_NUMERIC) || ((pocsag_mode == POCSAG_MODE_STANDARD) && (func == 0)) || ((pocsag_mode == POCSAG_MODE_AUTO) && (guess_num >= 20 || unsure)))
-            {
-                if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
-                    verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
-                           s->l2.pocsag.address, s->l2.pocsag.function);
-                else
-                    verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
-                if(pocsag_mode == POCSAG_MODE_AUTO)
-                    verbprintf(3, "Certainty: %5i  ", guess_num);
-                verbprintf(0, "Numeric: %s", num_string);
-                if(!sync) verbprintf(2,"<LOST SYNC>");
-                verbprintf(0,"\n");
-            }
-
-            if((pocsag_mode == POCSAG_MODE_ALPHA) || ((pocsag_mode == POCSAG_MODE_STANDARD) && (func != 0)) || ((pocsag_mode == POCSAG_MODE_AUTO) && (guess_alpha >= guess_skyper || unsure)))
-            {
-                if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
-                    verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
-                           s->l2.pocsag.address, s->l2.pocsag.function);
-                else
-                    verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
-                if(pocsag_mode == POCSAG_MODE_AUTO)
-                    verbprintf(3, "Certainty: %5i  ", guess_alpha);
-                verbprintf(0, "Alpha:   %s  ", alpha_string);
-		if (guess_alpha < 10 && rawsize > 0) {
-		  for (int i=0; i < rawsize; i++) {
-		    sprintf(&(hexstring[3*i]), "%02x ", rawmsg[i]);
-		  }
-		  verbprintf(0, "Hex:   %s  ", hexstring);
-		}
-
-                if(!sync) verbprintf(2,"<LOST SYNC>");
-                verbprintf(0,"\n");
-            }
-
-            if((pocsag_mode == POCSAG_MODE_SKYPER) || ((pocsag_mode == POCSAG_MODE_AUTO) && (guess_skyper >= guess_alpha || unsure))) // Only output SKYPER if we're explicitly asking for it or we're auto guessing! (because it's not part of one of the standards, right?!)
-            {
-                if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
-                    verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
-                           s->l2.pocsag.address, s->l2.pocsag.function);
-                else
-                    verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
-                if(pocsag_mode == POCSAG_MODE_AUTO)
-                    verbprintf(3, "Certainty: %5i  ", guess_skyper);
-                verbprintf(0, "Skyper:  %s", skyper_string);
-                if(!sync) verbprintf(2,"<LOST SYNC>");
-                verbprintf(0,"\n");
-            }
+	    if(!sync) verbprintf(2,"<LOST SYNC>");
+	    verbprintf(0,"\n");
         }
     }
 }
@@ -783,6 +659,7 @@ int pocsag_brute_repair(struct l2_state_pocsag *rx, uint32_t* data)
     if (pocsag_syndrome(*data)) {
         rx->pocsag_total_error_count++;
         verbprintf(6, "Error in syndrome detected!\n");
+        printf("Checksum Error!\n");
     } else {
         return 0;
     }
@@ -929,11 +806,13 @@ int check_crc(const uint32_t pocsag_word) {
   const uint32_t generator = 0x0769;
   const uint32_t crc_bits = 10;
   uint32_t denominator = generator << 20;
-  uint32_t msg = (pocsag_word & 0x7ffff800) >> (11 - crc_bits);
-  for (int i=0; i<22; i++) {
-    if ((msg & (1 << (30-i))) != 0) {
+  uint32_t msg = (pocsag_word & 0xfffff800) >> (11 - crc_bits);
+  uint32_t mask = 1 << 30;
+  for (int i=0; i<21; i++) {
+    if ((msg & mask) != 0) {
       msg ^= denominator;
     }
+    mask >>= 1;
     denominator >>= 1;
   }
   //  fprintf(stderr, "CRC = %04x, should be %04x\n", (pocsag_word >> 1) & 0x3FF, msg & 0x3FF);
@@ -962,175 +841,148 @@ static inline bool word_complete(struct demod_state *s)
     return (s->l2.pocsag.rx_bit == 0/* && check_crc(s->l2.pocsag.rx_data) && check_parity(s->l2.pocsag.rx_data)*/);
 }
 
-static inline bool is_sync(const uint32_t * const rx_data)
+static inline bool is_sync(const uint32_t rx_data)
 {
-    if(*rx_data == POCSAG_SYNC)
+    if(rx_data == POCSAG_SYNC)
         return true; // Sync found!
     return false;
 }
 
-static inline bool is_idle(const uint32_t * const rx_data)
+static inline bool is_idle(const uint32_t rx_data)
 {
-    if(*rx_data == POCSAG_IDLE)
+    if(rx_data == POCSAG_IDLE)
         return true; // Idle found!
     return false;
 }
 
-static void do_one_bit(struct demod_state *s, uint32_t rx_data)
-{
-    s->l2.pocsag.pocsag_total_bits_received++;
-
-    switch(s->l2.pocsag.state & SYNC)
-    {
-    case NO_SYNC:
-    {
-        s->l2.pocsag.pocsag_bits_processed_while_not_synced++;
-
-        pocsag_brute_repair(&s->l2.pocsag, &rx_data);
-        if(is_sync(&rx_data))
-        {
-            verbprintf(4, "Aquired sync!\n");
-            s->l2.pocsag.state = SYNC;
-        }
-        return;
-    }
-
-    case SYNC:
-    {
-        s->l2.pocsag.pocsag_bits_processed_while_synced++;
-
-        if(!word_complete(s))
-            return; // Wait for more bits to arrive.
-
-        // it is always 17 words
-        unsigned char rxword = s->l2.pocsag.rx_word; // for address calculation
-        s->l2.pocsag.rx_word = (s->l2.pocsag.rx_word + 1) % 17;
-
-        if(s->l2.pocsag.state == SYNC)
-            s->l2.pocsag.state = ADDRESS; // We're in sync, move on.
-
-        if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
-        {
-            // Arbitration lost
-            if(s->l2.pocsag.state != LOST_SYNC)
-                s->l2.pocsag.state = LOSING_SYNC;
-        }
-        else
-        {
-            if(s->l2.pocsag.state == LOST_SYNC)
-            {
-                verbprintf(4, "Recovered sync!\n");
-                s->l2.pocsag.state = ADDRESS;
-            }
-        }
-
-        if(is_sync(&rx_data))
-            return; // Already sync'ed.
-
-        while(true)
-            switch(s->l2.pocsag.state)
-            {
-            case LOSING_SYNC:
-            {
-                verbprintf(4, "Losing sync!\n");
-                // Output what we've received so far.
-                pocsag_printmessage(s, false);
-                s->l2.pocsag.numnibbles = 0;
-                s->l2.pocsag.address = -1;
-                s->l2.pocsag.function = -1;
-                s->l2.pocsag.state = LOST_SYNC;
-                return;
-            }
-
-            case LOST_SYNC:
-            {
-                verbprintf(4, "Lost sync!\n");
-                s->l2.pocsag.state = NO_SYNC;
-                s->l2.pocsag.rx_word = 0;
-                return;
-            }
-
-            case ADDRESS:
-            {
-                if(is_idle(&rx_data)) // Idle codewords have a magic address
-                    return;
-
-                if(rx_data & POCSAG_MESSAGE_DETECTION)
-                {
-                    verbprintf(4, "Got a message: %u\n", rx_data);
-                    s->l2.pocsag.function = -2;
-                    s->l2.pocsag.address  = -2;
-                    s->l2.pocsag.state = MESSAGE;
-                    break; // Performing partial decode
-                }
-
-                verbprintf(4, "Got an address: %u\n", rx_data);
-                s->l2.pocsag.function = (rx_data >> 11) & 3;
-                s->l2.pocsag.address  = ((rx_data >> 10) & 0x1ffff8) | ((rxword >> 1) & 7);
-                s->l2.pocsag.state = MESSAGE;
-                return;
-            }
-
-            case MESSAGE:
-            {
-                if(rx_data & POCSAG_MESSAGE_DETECTION)
-                    verbprintf(4, "Got a message: %u\n", rx_data);
-                else
-                {
-                    // Address/idle signals end of message
-                    verbprintf(4, "Got an address: %u\n", rx_data);
-                    s->l2.pocsag.state = END_OF_MESSAGE;
-                    break;
-                }
-
-                if (s->l2.pocsag.numnibbles > sizeof(s->l2.pocsag.buffer)*2 - 5) {
-                    verbprintf(0, "%s: Warning: Message too long\n",
-                               s->dem_par->name);
-                    s->l2.pocsag.state = END_OF_MESSAGE;
-                    break;
-                }
-
-                uint32_t data;
-                unsigned char *bp;
-                bp = s->l2.pocsag.buffer + (s->l2.pocsag.numnibbles >> 1);
-                data = (rx_data >> 11);
-                if (s->l2.pocsag.numnibbles & 1) {
-                    bp[0] = (bp[0] & 0xf0) | ((data >> 16) & 0xf);
-                    bp[1] = data >> 8;
-                    bp[2] = data;
-                } else {
-                    bp[0] = data >> 12;
-                    bp[1] = data >> 4;
-                    bp[2] = data << 4;
-                }
-                s->l2.pocsag.numnibbles += 5;
-                verbprintf(5, "We received something!\n");
-                return;
-            }
-
-            case END_OF_MESSAGE:
-            {
-                verbprintf(4, "End of message!\n");
-                pocsag_printmessage(s, true);
-                s->l2.pocsag.numnibbles = 0;
-                s->l2.pocsag.address = -1;
-                s->l2.pocsag.function = -1;
-                s->l2.pocsag.state = ADDRESS;
-                break;
-            }
-
-            default:
-                break;
-            }
-
-    }
-
-    default:
-        break;
-    }
+unsigned int pocsag_getAddress(uint32_t word, int frameno) {
+  return ((word >> 10) & 0x1ffff8) | (frameno & 7);
 }
 
+unsigned int pocsag_getFunction(uint32_t word) {
+  return (word >> 11) & 3;
+}
 
+static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
+    s->l2.pocsag.pocsag_total_bits_received++;
+
+    static uint32_t lasttime = 0;
+    uint32_t curtime;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    curtime = tv.tv_sec * 100 + tv.tv_usec / 10000;
+    if (curtime - lasttime > 20) {
+      printf( "Timeout\n");
+      s->l2.pocsag.state = NO_SYNC;
+    }
+    lasttime = curtime;
+
+    // If we're not in sync, just check if we have received the
+    // sync word yet. pocsag_rxbit() will keep shifting in new bits
+    // into rx_data, so we can just keep checking it until it matches
+    // the sync word.
+    if (s->l2.pocsag.state == NO_SYNC) {
+      s->l2.pocsag.pocsag_bits_processed_while_not_synced++;
+      if(is_sync(rx_data)) {
+	printf( "Acquired sync\n");
+	verbprintf(4, "Aquired sync!\n");
+	s->l2.pocsag.state = SYNC;
+	// Now reset the bit counter so the next word starts from the
+	// beginning.
+	s->l2.pocsag.rx_bit = 0;
+      }
+    } else {
+        s->l2.pocsag.pocsag_bits_processed_while_synced++;
+
+	// Check if we have received 32 bits
+        if (!word_complete(s)) {
+            return; // Wait for more bits to arrive.
+	}
+
+	printf( "Received a complete word: %08x CRC: %s, parity: %s\n", rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
+        if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
+        {
+	  // Arbitration lost
+	  printf( "Saved words: %d\n", s->l2.pocsag.saved_words);
+	  pocsag_printmessage(s, false);
+	  s->l2.pocsag.numnibbles = 0;
+	  s->l2.pocsag.address = -1;
+	  s->l2.pocsag.function = -1;
+	  s->l2.pocsag.rx_word = 0;
+	  s->l2.pocsag.saved_words = 0;
+	  s->l2.pocsag.state = NO_SYNC;
+	  return;
+	}
+
+	unsigned char rxword = s->l2.pocsag.rx_word; // for address calculation
+	s->l2.pocsag.orig_words[s->l2.pocsag.saved_words++] = rx_data;
+        s->l2.pocsag.rx_word = (s->l2.pocsag.rx_word + 1) % 17;
+	if (s->l2.pocsag.rx_word == 0) {
+	  if (s->l2.pocsag.state == MESSAGE) {
+	    printf( "Saved words: %d\n", s->l2.pocsag.saved_words);
+	    pocsag_printmessage(s, false);
+	    s->l2.pocsag.numnibbles = 0;
+	    s->l2.pocsag.address = -1;
+	    s->l2.pocsag.function = -1;
+	    s->l2.pocsag.rx_word = 0;
+	    s->l2.pocsag.saved_words = 0;
+	    s->l2.pocsag.state = NO_SYNC;
+	  }
+	}
+
+	if(!(rx_data & POCSAG_MESSAGE_DETECTION)) {
+	  if (s->l2.pocsag.state == MESSAGE) {
+	    printf( "Saved words: %d\n", s->l2.pocsag.saved_words - 1);
+	    pocsag_printmessage(s, false);
+	    if (s->l2.pocsag.saved_words > 0) {
+	      s->l2.pocsag.orig_words[0] = s->l2.pocsag.orig_words[s->l2.pocsag.saved_words - 1];
+	      s->l2.pocsag.saved_words = 1;
+	    } else {
+	      s->l2.pocsag.saved_words = 0;
+	    }
+	    s->l2.pocsag.numnibbles = 0;
+	  }
+	  if (is_idle(rx_data)) {
+	    s->l2.pocsag.address = -1;
+	    s->l2.pocsag.function = -1;
+	    s->l2.pocsag.state = SYNC;
+	  } else {
+	    s->l2.pocsag.address = pocsag_getAddress(rx_data, rxword >> 1);
+	    s->l2.pocsag.function = pocsag_getFunction(rx_data);
+	    s->l2.pocsag.state = MESSAGE;
+	  }
+	} else {
+	  s->l2.pocsag.state = MESSAGE;
+	  if (s->l2.pocsag.numnibbles > sizeof(s->l2.pocsag.buffer)*2 - 5) {
+	    verbprintf(0, "%s: Warning: Message too long\n",
+		       s->dem_par->name);
+	    
+	    printf( "Saved words: %d\n", s->l2.pocsag.saved_words);
+	    pocsag_printmessage(s, false);
+	    s->l2.pocsag.numnibbles = 0;
+	    s->l2.pocsag.address = -1;
+	    s->l2.pocsag.function = -1;
+	    s->l2.pocsag.saved_words = 0;
+	    s->l2.pocsag.state = NO_SYNC;
+	  } else {
+	    uint32_t data;
+	    unsigned char *bp;
+	    bp = s->l2.pocsag.buffer + (s->l2.pocsag.numnibbles >> 1);
+	    data = (rx_data >> 11);
+	    if (s->l2.pocsag.numnibbles & 1) {
+	      bp[0] = (bp[0] & 0xf0) | ((data >> 16) & 0xf);
+	      bp[1] = data >> 8;
+	      bp[2] = data;
+	    } else {
+	      bp[0] = data >> 12;
+	      bp[1] = data >> 4;
+	      bp[2] = data << 4;
+	    }
+	    s->l2.pocsag.numnibbles += 5;
+	  }
+	}
+    }
+}
 
 /* ---------------------------------------------------------------------- */
 
