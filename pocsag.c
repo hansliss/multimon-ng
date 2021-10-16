@@ -412,7 +412,7 @@ void prepare_msg_bin(struct l2_state_pocsag *rx, char* buff, unsigned char *rawb
     memcpy(rawbuf, rx->buffer, ((*rawsize) > len/2)?(len/2):(*rawsize));
     *rawsize = len/2;
     for (int i=0; i < *rawsize; i++) {
-        sprintf(&(buff[3*i]), "%02x ", rawbuf[i]);
+        sprintf(&(buff[3*i]), "%02x   ", rawbuf[i]);
     }
 }
 void prepare_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size, unsigned char *rawbuf, int *rawsize)

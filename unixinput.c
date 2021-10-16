@@ -98,7 +98,6 @@ extern bool fms_justhex;
 extern int pocsag_invert_input;
 extern int pocsag_error_correction;
 extern int pocsag_show_partial_decodes;
-extern int pocsag_heuristic_pruning;
 extern int pocsag_prune_empty;
 extern bool pocsag_init_charset(char *charset);
 
