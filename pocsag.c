@@ -42,6 +42,14 @@
 /* ---------------------------------------------------------------------- */
 
 
+/*
+ * Some POCSAG modes and functions
+ */
+
+#define POCSAG_MODE_NUMERIC 0
+#define POCSAG_MODE_BIN1    1
+#define POCSAG_MODE_BIN2    2
+#define POCSAG_MODE_ALPHA   3
 
 /*
  * some codewords with special POCSAG meaning
@@ -221,13 +229,13 @@ static unsigned int pocsag_syndrome(uint32_t data)
 			"X", 		// 0x58
 			"Y", 		// 0x59
 			"Z", 		// 0x5a
-			
+
 						// national variant
 			"[", 		// 0x5b
 			"\\", 		// 0x5c
 			"]", 		// 0x5d
 			"^", 		// 0x5e
-			
+
 			"_", 		// 0x5f
 
 						// national variant
@@ -259,14 +267,14 @@ static unsigned int pocsag_syndrome(uint32_t data)
 			"x", 		// 0x78
 			"y", 		// 0x79
 			"z", 		// 0x7a
-			
+
 						// national variant
 			"{", 		// 0x7b
 			"|", 		// 0x7c
 			"}", 		// 0x7d
 			"~", 		// 0x7e
-			
-			"<DEL>"		// 0x7f  
+
+			"<DEL>"		// 0x7f
 		};
 
 
@@ -387,7 +395,7 @@ bool pocsag_init_charset(char *charset)
 		fprintf(stderr, "Error: invalid POCSAG charset %s\n", charset);
 		fprintf(stderr, "Use: US,FR,DE,SE,SI\n");
 		charset = "US";
-		return false; 
+		return false;
 	}
 	return true;
 }
@@ -398,46 +406,13 @@ static char *translate_alpha(unsigned char chr)
 }
 
 /* ---------------------------------------------------------------------- */
-static int guesstimate_alpha(const unsigned char cp)
-{
-    if((cp > 0 && cp != 12 && cp != 15 && cp < 32) || cp == 127)
-        return -5; // Non printable characters are uncommon
-    else if(((cp > ' ' && cp < '0')
-            || (cp > '9' && cp < 'A')
-            || (cp > ']' && cp < 'a')
-	     || (cp > '}' && cp < 127)) &&
-	    cp != '_' &&
-	    cp != '-' &&
-	    cp != '.' &&
-	    cp != ',' &&
-	    cp != '=' &&
-	    cp != '/')
-        return -2; // Penalize special characters
-    else
-        return 1;
-}
 
-static int guesstimate_numeric(const unsigned char cp, int pos)
-{
-    if(cp == 'U')
-        return -10;
-    else if(cp == '[' || cp == ']')
-        return -5;
-    else if(cp == ' ' || cp == '.' || cp == '-')
-        return -2;
-    else if(pos < 10) // Penalize long messages
-        return 5;
-    else
-        return 0;
-}
-
-static unsigned int print_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+void prepare_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
     static const char *conv_table = "084 2.6]195-3U7[";
     unsigned char *bp = rx->buffer;
     int len = rx->numnibbles;
     char* cp = buff;
-    unsigned int guesstimate = 0;
 
     if ( (unsigned int) len >= size)
         len = size-1;
@@ -447,14 +422,9 @@ static unsigned int print_msg_numeric(struct l2_state_pocsag *rx, char* buff, un
             *cp++ = conv_table[*bp & 0xf];
     }
     *cp = '\0';
-
-    cp = buff;
-    for(int i = 0; *(cp+i); i++)
-        guesstimate += guesstimate_numeric(*(cp+i), i);
-    return guesstimate;
 }
 
-static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size, unsigned char *rawbuf, int *rawsize)
+void prepare_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size, unsigned char *rawbuf, int *rawsize)
 {
     uint32_t data = 0;
     int datalen = 0;
@@ -464,7 +434,6 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
     int buffree = size-1;
     unsigned char curchr;
     char *tstr;
-    int guesstimate = 0;
 
     memcpy(rawbuf, rx->buffer, ((*rawsize) > len/2)?(len/2):(*rawsize));
     *rawsize = len/2;
@@ -490,9 +459,6 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
         curchr = ((curchr & 0xcc) >> 2) | ((curchr & 0x33) << 2);
         curchr = ((curchr & 0xaa) >> 1) | ((curchr & 0x55) << 1);
 
-
-        guesstimate += guesstimate_alpha(curchr);
-
         tstr = translate_alpha(curchr);
         if (tstr)
         {
@@ -510,61 +476,8 @@ static int print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int 
     }
     *cp = '\0';
 
-    return guesstimate;
 }
 
-/* ---------------------------------------------------------------------- */
-
-static int print_msg_skyper(struct l2_state_pocsag *rx, char* buff, unsigned int size)
-{
-    uint32_t data = 0;
-    int datalen = 0;
-    unsigned char *bp = rx->buffer;
-    int len = rx->numnibbles;
-    char* cp = buff;
-    int buffree = size-1;
-    unsigned char curchr;
-    char *tstr;
-    unsigned int guesstimate = 0;
-
-    while (len > 0) {
-        while (datalen < 7 && len > 0) {
-            if (len == 1) {
-                data = (data << 4) | ((*bp >> 4) & 0xf);
-                datalen += 4;
-                len = 0;
-            } else {
-                data = (data << 8) | *bp++;
-                datalen += 8;
-                len -= 2;
-            }
-        }
-        if (datalen < 7)
-            continue;
-        datalen -= 7;
-        curchr = ((data >> datalen) & 0x7f) << 1;
-        curchr = ((curchr & 0xf0) >> 4) | ((curchr & 0x0f) << 4);
-        curchr = ((curchr & 0xcc) >> 2) | ((curchr & 0x33) << 2);
-        curchr = ((curchr & 0xaa) >> 1) | ((curchr & 0x55) << 1);
-
-        guesstimate += guesstimate_alpha(curchr-1);
-
-        tstr = translate_alpha(curchr-1);
-        if (tstr) {
-            int tlen = strlen(tstr);
-            if (buffree >= tlen) {
-                memcpy(cp, tstr, tlen);
-                cp += tlen;
-                buffree -= tlen;
-            }
-        } else if (buffree > 0) {
-            *cp++ = curchr-1;
-            buffree--;
-        }
-    }
-    *cp = '\0';
-    return guesstimate;
-}
 
 /* ---------------------------------------------------------------------- */
 
@@ -577,89 +490,50 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
 
     if((s->l2.pocsag.address != -1) || (s->l2.pocsag.function != -1))
     {
-        if(s->l2.pocsag.numnibbles == 0)
-        {
-            verbprintf(0, "%s: Address: %7lu  Function: %1hhi ",s->dem_par->name,
-                       s->l2.pocsag.address, s->l2.pocsag.function);
-            if(!sync) verbprintf(2,"<LOST SYNC>");
-            verbprintf(0,"\n");
-        }
+        char num_string[1024];
+        char alpha_string[1024];
+        static unsigned char rawmsg[4096];
+        static char hex_string[12288];
+        int rawsize = sizeof(rawmsg);
+
+        verbprintf(0, "%s: ",s->dem_par->name);
+
+        if(s->l2.pocsag.address != -2)
+            verbprintf(0, "Address: %7lu  ", s->l2.pocsag.address);
         else
+            verbprintf(0, "Address:       -  ",s->dem_par->name);
+
+        if(s->l2.pocsag.function != -2)
+            verbprintf(0, "Function: %1hhi  ", s->l2.pocsag.function);
+        else
+            verbprintf(0, "Function: -  ");
+
+
+        if(s->l2.pocsag.numnibbles > 0)
         {
-            char num_string[1024];
-            char alpha_string[1024];
-            char skyper_string[1024];
-	    static unsigned char rawmsg[4096];
-	    static char hexstring[12288];
-            int guess_num = 0;
-            int guess_alpha = 0;
-            int guess_skyper = 0;
-            int unsure = 0;
-            int func = 0;
-	    int rawsize = sizeof(rawmsg);
-
-            guess_num = print_msg_numeric(&s->l2.pocsag, num_string, sizeof(num_string));
-            guess_alpha = print_msg_alpha(&s->l2.pocsag, alpha_string, sizeof(alpha_string), rawmsg, &rawsize);
-            guess_skyper = print_msg_skyper(&s->l2.pocsag, skyper_string, sizeof(skyper_string));
-
-            func = s->l2.pocsag.function;
-
-            if(guess_num < 20 && guess_alpha < 20 && guess_skyper < 20)
+            switch (s->l2.pocsag.function)
             {
-                if(pocsag_heuristic_pruning)
-                    return;
-                unsure = 1;
+                case POCSAG_MODE_NUMERIC:
+                    prepare_msg_numeric(&s->l2.pocsag, num_string, sizeof(num_string));
+                    verbprintf(0, "Numeric: %s", num_string);
+                    break;
+                case POCSAG_MODE_BIN1:
+                case POCSAG_MODE_BIN2:
+                    for (int i=0; i < rawsize; i++) {
+                        sprintf(&(hex_string[3*i]), "%02x ", rawmsg[i]);
+                    }
+                    verbprintf(0, "Hex:   %s  ", hex_string);
+                    break;
+                case POCSAG_MODE_ALPHA:
+                    prepare_msg_alpha(&s->l2.pocsag, alpha_string, sizeof(alpha_string), rawmsg, &rawsize);
+                    verbprintf(0, "Alpha:   %s  ", alpha_string);
+                    break;
             }
 
-            if((pocsag_mode == POCSAG_MODE_NUMERIC) || ((pocsag_mode == POCSAG_MODE_STANDARD) && (func == 0)) || ((pocsag_mode == POCSAG_MODE_AUTO) && (guess_num >= 20 || unsure)))
-            {
-                if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
-                    verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
-                           s->l2.pocsag.address, s->l2.pocsag.function);
-                else
-                    verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
-                if(pocsag_mode == POCSAG_MODE_AUTO)
-                    verbprintf(3, "Certainty: %5i  ", guess_num);
-                verbprintf(0, "Numeric: %s", num_string);
-                if(!sync) verbprintf(2,"<LOST SYNC>");
-                verbprintf(0,"\n");
-            }
-
-            if((pocsag_mode == POCSAG_MODE_ALPHA) || ((pocsag_mode == POCSAG_MODE_STANDARD) && (func != 0)) || ((pocsag_mode == POCSAG_MODE_AUTO) && (guess_alpha >= guess_skyper || unsure)))
-            {
-                if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
-                    verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
-                           s->l2.pocsag.address, s->l2.pocsag.function);
-                else
-                    verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
-                if(pocsag_mode == POCSAG_MODE_AUTO)
-                    verbprintf(3, "Certainty: %5i  ", guess_alpha);
-                verbprintf(0, "Alpha:   %s  ", alpha_string);
-		if (guess_alpha < 10 && rawsize > 0) {
-		  for (int i=0; i < rawsize; i++) {
-		    sprintf(&(hexstring[3*i]), "%02x ", rawmsg[i]);
-		  }
-		  verbprintf(0, "Hex:   %s  ", hexstring);
-		}
-
-                if(!sync) verbprintf(2,"<LOST SYNC>");
-                verbprintf(0,"\n");
-            }
-
-            if((pocsag_mode == POCSAG_MODE_SKYPER) || ((pocsag_mode == POCSAG_MODE_AUTO) && (guess_skyper >= guess_alpha || unsure))) // Only output SKYPER if we're explicitly asking for it or we're auto guessing! (because it's not part of one of the standards, right?!)
-            {
-                if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
-                    verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
-                           s->l2.pocsag.address, s->l2.pocsag.function);
-                else
-                    verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
-                if(pocsag_mode == POCSAG_MODE_AUTO)
-                    verbprintf(3, "Certainty: %5i  ", guess_skyper);
-                verbprintf(0, "Skyper:  %s", skyper_string);
-                if(!sync) verbprintf(2,"<LOST SYNC>");
-                verbprintf(0,"\n");
-            }
         }
+        if(!sync)
+            verbprintf(2,"<LOST SYNC>");
+        verbprintf(0,"\n");
     }
 }
 
@@ -955,7 +829,7 @@ int check_parity(const uint32_t pocsag_word) {
 }
 
 static inline bool word_complete(struct demod_state *s)
-{    
+{
     // Do nothing for 31 bits
     // When the word is complete let the program counter pass
     s->l2.pocsag.rx_bit = (s->l2.pocsag.rx_bit + 1) % 32;
