@@ -578,12 +578,12 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
 	    case 1:
 	    case 2:
 	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
-	      verbprintf(0, "Binary: %s  ", string);
+	      verbprintf(0, "Binary:  %s  ", string);
 	      debuglog("Binary:  %s  ", string);
 	    case 3:
 	      print_msg_alpha(&s->l2.pocsag, string, sizeof(string));	 
-	      verbprintf(0, "Alpha:   %s  ", string);
-	      debuglog("Alpha:   %s  ", string);
+	      verbprintf(0, "Alpha:   %s", string);
+	      debuglog("Alpha:   %s", string);
 	      break;
 	    default:
 	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
