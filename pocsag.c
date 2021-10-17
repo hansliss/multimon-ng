@@ -990,12 +990,14 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
       if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
         {
 	  // Arbitration lost
+#if 0
 	  pocsag_printmessage(s, false);
 	  s->l2.pocsag.numnibbles = 0;
 	  s->l2.pocsag.address = -1;
 	  s->l2.pocsag.function = -1;
 	  s->l2.pocsag.state = NO_SYNC;
 	  return;
+#endif
 	}
 
       // If we receive an address word, any active message is terminated.
