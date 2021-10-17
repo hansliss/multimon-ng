@@ -109,7 +109,6 @@ struct demod_state {
             uint32_t rx_data;
             unsigned char state;        // state machine
             unsigned char rx_bit;       // bit counter, counts 32bits
-            unsigned char rx_word;
             int32_t function;          // POCSAG function
             int32_t address;           // POCSAG address
             unsigned char buffer[512];
@@ -122,8 +121,6 @@ struct demod_state {
             uint32_t pocsag_total_bits_received;
             uint32_t pocsag_bits_processed_while_synced;
             uint32_t pocsag_bits_processed_while_not_synced;
-	  uint32_t orig_words[1024];
-	  int saved_words;
         } pocsag;
     } l2;
     union {

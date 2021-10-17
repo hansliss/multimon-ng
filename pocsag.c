@@ -864,6 +864,8 @@ unsigned int pocsag_getFunction(uint32_t word) {
 }
 
 static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
+  // We need to keep track of the number of words we've received, since
+  // we want to terminate a batch after 16 words.
   static int received_words=0;
   int frame=0;
   
@@ -900,9 +902,12 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
       return; // Wait for more bits to arrive.
     }
 
+    // We need to keep track of the frame#, since that is
+    // used as part of the address calculation
     frame = received_words / 2;
     received_words++;
-	
+
+    // If we receive an IDLE word, any active message is terminated.
     if (is_idle(rx_data)) {
       printf("f%dw%d: Received IDLE\n",
 	     (received_words - 1) / 2,
@@ -931,7 +936,9 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	  s->l2.pocsag.state = NO_SYNC;
 	  return;
 	}
-      
+
+      // If we receive an address word, any active message is terminated.
+      // Then we calculate the address and function
       if(!(rx_data & POCSAG_MESSAGE_DETECTION)) {
 	if (s->l2.pocsag.numnibbles > 0) {
 	  printf("Detected non-message word. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
@@ -946,6 +953,8 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	fflush(stdout);
 	s->l2.pocsag.state = MESSAGE;
       } else /* Message word */ {
+	// If we receive a message word, we just collect the contents, regardless
+	// of whether we've received an address
 	s->l2.pocsag.state = MESSAGE;
 	if (s->l2.pocsag.numnibbles > sizeof(s->l2.pocsag.buffer)*2 - 5) {
 	  verbprintf(0, "%s: Warning: Message too long\n",
@@ -977,6 +986,9 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	}
       }
     }
+    // Once we've received 16 words, a batch is finished and we
+    // go out of sync. We don't HAVE to, since the code above will
+    // handle an in-line sync word just fine. But we do anyway.
     if (received_words == 16) {
       printf( "Received a full batch. Resetting...\n");
       s->l2.pocsag.state = NO_SYNC;
