@@ -122,7 +122,7 @@ struct demod_state {
             uint32_t pocsag_total_bits_received;
             uint32_t pocsag_bits_processed_while_synced;
             uint32_t pocsag_bits_processed_while_not_synced;
-	  uint32_t orig_words[17];
+	  uint32_t orig_words[1024];
 	  int saved_words;
         } pocsag;
     } l2;

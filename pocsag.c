@@ -49,6 +49,7 @@
  */
 #define POCSAG_SYNC     0x7cd215d8
 #define POCSAG_IDLE     0x7a89c197
+#define POCSAG_IDLEOP   0x7a89c196
 #define POCSAG_SYNCINFO 0x7cf21436 // what is this value?
 
 #define POCSAG_SYNC_WORDS ((2000000 >> 3) << 13)
@@ -473,13 +474,13 @@ static void print_msg_binary(struct l2_state_pocsag *rx, char* buff, unsigned in
   char *bp = buff;
   int len;
   buff[0] = '\0';
-  for (int i=0; i < rx->saved_words && size; i++) {
+  for (uint32_t i=0; i < rx->numnibbles && size; i += 2) {
     if (i > 0) {
       strcat(bp, ",");
       bp++;
       size--;
     }
-    len = sprintf(bp, "%04x", rx->orig_words[i]);
+    len = sprintf(bp, "%02x", rx->buffer[i]);
     size -= len;
     bp += len;
   }
@@ -659,7 +660,6 @@ int pocsag_brute_repair(struct l2_state_pocsag *rx, uint32_t* data)
     if (pocsag_syndrome(*data)) {
         rx->pocsag_total_error_count++;
         verbprintf(6, "Error in syndrome detected!\n");
-        printf("Checksum Error!\n");
     } else {
         return 0;
     }
@@ -850,7 +850,7 @@ static inline bool is_sync(const uint32_t rx_data)
 
 static inline bool is_idle(const uint32_t rx_data)
 {
-    if(rx_data == POCSAG_IDLE)
+    if(rx_data == POCSAG_IDLE || rx_data == POCSAG_IDLEOP)
         return true; // Idle found!
     return false;
 }
@@ -864,137 +864,138 @@ unsigned int pocsag_getFunction(uint32_t word) {
 }
 
 static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
-    s->l2.pocsag.pocsag_total_bits_received++;
-
-    static uint32_t lasttime = 0;
-    uint32_t curtime;
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    curtime = tv.tv_sec * 100 + tv.tv_usec / 10000;
-    if (curtime - lasttime > 20) {
-      printf( "Timeout\n");
-      s->l2.pocsag.state = NO_SYNC;
+  static int received_words=0;
+  int frame=0;
+  
+  s->l2.pocsag.pocsag_total_bits_received++;
+  
+  // If we're not in sync, just check if we have received the
+  // sync word yet. pocsag_rxbit() will keep shifting in new bits
+  // into rx_data, so we can just keep checking it until it matches
+  // the sync word.
+  if (s->l2.pocsag.state == NO_SYNC) {
+    s->l2.pocsag.pocsag_bits_processed_while_not_synced++;
+    if(is_sync(rx_data)) {
+      printf( "Acquired sync\n");
+      verbprintf(4, "Aquired sync!\n");
+      fflush(stdout);
+      s->l2.pocsag.state = SYNC;
+      // Now reset the bit counter so the next word starts from the
+      // beginning.
+      s->l2.pocsag.rx_bit = 0;
+      received_words=0;
     }
-    lasttime = curtime;
+  } else /* is in sync */ {
+    // If we receive a new sync word, we start a new batch
+    if (is_sync(rx_data)) {
+      printf("Received sync. Resetting.\n");
+      s->l2.pocsag.rx_bit = 0;
+      received_words=0;
+      return;
+    } 
+    s->l2.pocsag.pocsag_bits_processed_while_synced++;
 
-    // If we're not in sync, just check if we have received the
-    // sync word yet. pocsag_rxbit() will keep shifting in new bits
-    // into rx_data, so we can just keep checking it until it matches
-    // the sync word.
-    if (s->l2.pocsag.state == NO_SYNC) {
-      s->l2.pocsag.pocsag_bits_processed_while_not_synced++;
-      if(is_sync(rx_data)) {
-	printf( "Acquired sync\n");
-	verbprintf(4, "Aquired sync!\n");
-	s->l2.pocsag.state = SYNC;
-	// Now reset the bit counter so the next word starts from the
-	// beginning.
-	s->l2.pocsag.rx_bit = 0;
+    // Check if we have received 32 bits
+    if (!word_complete(s)) {
+      return; // Wait for more bits to arrive.
+    }
+
+    frame = received_words / 2;
+    received_words++;
+	
+    if (is_idle(rx_data)) {
+      printf("f%dw%d: Received IDLE\n",
+	     (received_words - 1) / 2,
+	     (received_words - 1) % 2);
+      if (s->l2.pocsag.numnibbles > 0) {
+	pocsag_printmessage(s, false);
+	s->l2.pocsag.numnibbles = 0;
+	s->l2.pocsag.address = -1;
+	s->l2.pocsag.function = -1;
       }
-    } else {
-        s->l2.pocsag.pocsag_bits_processed_while_synced++;
-
-	// Check if we have received 32 bits
-        if (!word_complete(s)) {
-            return; // Wait for more bits to arrive.
-	}
-
-	printf( "Received a complete word: %08x CRC: %s, parity: %s\n", rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
-        if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
+    } else /* not IDLE */ {
+      printf( "f%dw%d: Received a complete word: %08x CRC: %s, parity: %s\n",
+	      (received_words - 1) / 2,
+	      (received_words - 1) % 2,
+	      rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
+      fflush(stdout);
+      if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
         {
 	  // Arbitration lost
-	  printf( "Saved words: %d\n", s->l2.pocsag.saved_words);
+	  fflush(stdout);
 	  pocsag_printmessage(s, false);
+	  fflush(stdout);
 	  s->l2.pocsag.numnibbles = 0;
 	  s->l2.pocsag.address = -1;
 	  s->l2.pocsag.function = -1;
-	  s->l2.pocsag.rx_word = 0;
-	  s->l2.pocsag.saved_words = 0;
 	  s->l2.pocsag.state = NO_SYNC;
 	  return;
 	}
-
-	unsigned char rxword = s->l2.pocsag.rx_word; // for address calculation
-	s->l2.pocsag.orig_words[s->l2.pocsag.saved_words++] = rx_data;
-        s->l2.pocsag.rx_word = (s->l2.pocsag.rx_word + 1) % 17;
-	if (s->l2.pocsag.rx_word == 0) {
-	  if (s->l2.pocsag.state == MESSAGE) {
-	    printf( "Saved words: %d\n", s->l2.pocsag.saved_words);
-	    pocsag_printmessage(s, false);
-	    s->l2.pocsag.numnibbles = 0;
-	    s->l2.pocsag.address = -1;
-	    s->l2.pocsag.function = -1;
-	    s->l2.pocsag.rx_word = 0;
-	    s->l2.pocsag.saved_words = 0;
-	    s->l2.pocsag.state = NO_SYNC;
-	  }
+      
+      if(!(rx_data & POCSAG_MESSAGE_DETECTION)) {
+	if (s->l2.pocsag.numnibbles > 0) {
+	  printf("Detected non-message word. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
+	  fflush(stdout);
+	  pocsag_printmessage(s, false);
+	  fflush(stdout);
+	  s->l2.pocsag.numnibbles = 0;
 	}
-
-	if(!(rx_data & POCSAG_MESSAGE_DETECTION)) {
-	  if (s->l2.pocsag.state == MESSAGE) {
-	    printf( "Saved words: %d\n", s->l2.pocsag.saved_words - 1);
-	    pocsag_printmessage(s, false);
-	    if (s->l2.pocsag.saved_words > 0) {
-	      s->l2.pocsag.orig_words[0] = s->l2.pocsag.orig_words[s->l2.pocsag.saved_words - 1];
-	      s->l2.pocsag.saved_words = 1;
-	    } else {
-	      s->l2.pocsag.saved_words = 0;
-	    }
-	    s->l2.pocsag.numnibbles = 0;
-	  }
-	  if (is_idle(rx_data)) {
-	    s->l2.pocsag.address = -1;
-	    s->l2.pocsag.function = -1;
-	    s->l2.pocsag.state = SYNC;
+	s->l2.pocsag.address = pocsag_getAddress(rx_data, frame);
+	s->l2.pocsag.function = pocsag_getFunction(rx_data);
+	printf("Address: %u Function: %1hhi\n", s->l2.pocsag.address, s->l2.pocsag.function);
+	fflush(stdout);
+	s->l2.pocsag.state = MESSAGE;
+      } else /* Message word */ {
+	s->l2.pocsag.state = MESSAGE;
+	if (s->l2.pocsag.numnibbles > sizeof(s->l2.pocsag.buffer)*2 - 5) {
+	  verbprintf(0, "%s: Warning: Message too long\n",
+		     s->dem_par->name);
+	  
+	  fflush(stdout);
+	  printf( "Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
+	  fflush(stdout);
+	  pocsag_printmessage(s, false);
+	  fflush(stdout);
+	  s->l2.pocsag.numnibbles = 0;
+	  s->l2.pocsag.address = -1;
+	  s->l2.pocsag.function = -1;
+	} else /* Message is not too long */ {
+	  uint32_t data;
+	  unsigned char *bp;
+	  bp = s->l2.pocsag.buffer + (s->l2.pocsag.numnibbles >> 1);
+	  data = (rx_data >> 11);
+	  if (s->l2.pocsag.numnibbles & 1) {
+	    bp[0] = (bp[0] & 0xf0) | ((data >> 16) & 0xf);
+	    bp[1] = data >> 8;
+	    bp[2] = data;
 	  } else {
-	    s->l2.pocsag.address = pocsag_getAddress(rx_data, rxword >> 1);
-	    s->l2.pocsag.function = pocsag_getFunction(rx_data);
-	    s->l2.pocsag.state = MESSAGE;
+	    bp[0] = data >> 12;
+	    bp[1] = data >> 4;
+	    bp[2] = data << 4;
 	  }
-	} else {
-	  s->l2.pocsag.state = MESSAGE;
-	  if (s->l2.pocsag.numnibbles > sizeof(s->l2.pocsag.buffer)*2 - 5) {
-	    verbprintf(0, "%s: Warning: Message too long\n",
-		       s->dem_par->name);
-	    
-	    printf( "Saved words: %d\n", s->l2.pocsag.saved_words);
-	    pocsag_printmessage(s, false);
-	    s->l2.pocsag.numnibbles = 0;
-	    s->l2.pocsag.address = -1;
-	    s->l2.pocsag.function = -1;
-	    s->l2.pocsag.saved_words = 0;
-	    s->l2.pocsag.state = NO_SYNC;
-	  } else {
-	    uint32_t data;
-	    unsigned char *bp;
-	    bp = s->l2.pocsag.buffer + (s->l2.pocsag.numnibbles >> 1);
-	    data = (rx_data >> 11);
-	    if (s->l2.pocsag.numnibbles & 1) {
-	      bp[0] = (bp[0] & 0xf0) | ((data >> 16) & 0xf);
-	      bp[1] = data >> 8;
-	      bp[2] = data;
-	    } else {
-	      bp[0] = data >> 12;
-	      bp[1] = data >> 4;
-	      bp[2] = data << 4;
-	    }
-	    s->l2.pocsag.numnibbles += 5;
-	  }
+	  s->l2.pocsag.numnibbles += 5;
 	}
+      }
     }
+    if (received_words == 16) {
+      printf( "Received a full batch. Resetting...\n");
+      s->l2.pocsag.state = NO_SYNC;
+      received_words = 0;
+    }
+  }
 }
 
-/* ---------------------------------------------------------------------- */
+  /* ---------------------------------------------------------------------- */
 
-void pocsag_rxbit(struct demod_state *s, int32_t bit)
-{
+  void pocsag_rxbit(struct demod_state *s, int32_t bit)
+  {
     s->l2.pocsag.rx_data <<= 1;
     s->l2.pocsag.rx_data |= !bit;
     verbprintf(9, " %c ", '1'-(s->l2.pocsag.rx_data & 1));
     if(pocsag_invert_input)
-        do_one_bit(s, ~(s->l2.pocsag.rx_data)); // this tries the inverted signal
+      do_one_bit(s, ~(s->l2.pocsag.rx_data)); // this tries the inverted signal
     else
-        do_one_bit(s, s->l2.pocsag.rx_data);
-}
+      do_one_bit(s, s->l2.pocsag.rx_data);
+  }
 
-/* ---------------------------------------------------------------------- */
+  /* ---------------------------------------------------------------------- */
