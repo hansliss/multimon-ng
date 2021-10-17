@@ -32,6 +32,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include <time.h>
 #include <stdbool.h>
 #include <sys/time.h>
 
@@ -67,6 +69,8 @@ int pocsag_prune_empty = 0;
 
 /* ---------------------------------------------------------------------- */
 
+int check_crc(const uint32_t pocsag_word);
+int check_parity(const uint32_t pocsag_word);
 
 enum states{
     NO_SYNC = 0,            //0b00000000
@@ -106,7 +110,42 @@ static inline unsigned char even_parity(uint32_t data)
 #define BCH_N    31
 #define BCH_K    21
 
+void debuglog(char *format, ...) {
+  static int is_startline = 1;
+  FILE *debugFile = fopen("pocsag_debug.log", "a");
+  char time_buf[20];
+  time_t t;
+  struct tm* tm_info;
+  
+  if (is_startline) {
+    t = time(NULL);
+    tm_info = localtime(&t);
+    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
+    fprintf(debugFile, "%s: ", time_buf);
+    is_startline = false;
+  }
+  if (strchr(format,'\n')) {
+    is_startline = true;
+  }
+  va_list args;
+  va_start(args, format);
+  vfprintf(debugFile, format, args);
+  va_end(args);
+  fclose(debugFile);
+}
 
+void logword(uint32_t word, int frame, int fword) {
+  FILE *csvFile = fopen("pocsag_words.csv", "a");
+  char time_buf[20];
+  time_t t;
+  struct tm* tm_info;
+  
+  t = time(NULL);
+  tm_info = localtime(&t);
+  strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
+  fprintf(csvFile, "%s,%d,%d,%d,%d,%08x\n", time_buf, frame, fword, check_crc(word), check_parity(word), word);
+  fclose(csvFile);
+}
 
 /* ---------------------------------------------------------------------- */
 
@@ -501,7 +540,11 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
         {
             verbprintf(0, "%s: Address: %7lu  Function: %1hhi ",s->dem_par->name,
                        s->l2.pocsag.address, s->l2.pocsag.function);
-            if(!sync) verbprintf(2,"<LOST SYNC>");
+            debuglog("%s: Address: %7lu  Function: %1hhi ",s->dem_par->name,
+                       s->l2.pocsag.address, s->l2.pocsag.function);
+            if(!sync) {
+	      verbprintf(2,"<LOST SYNC>");
+	    }
             verbprintf(0,"\n");
         }
         else
@@ -510,32 +553,43 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
             int func = 0;
             func = s->l2.pocsag.function;
 
-	    if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2))
+	    if((s->l2.pocsag.address != -2) || (s->l2.pocsag.function != -2)) {
 	      verbprintf(0, "%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
 			 s->l2.pocsag.address, s->l2.pocsag.function);
-	    else
+	      debuglog("%s: Address: %7lu  Function: %1hhi  ",s->dem_par->name,
+		       s->l2.pocsag.address, s->l2.pocsag.function);
+	    } else {
 	      verbprintf(0, "%s: Address:       -  Function: -  ",s->dem_par->name);
+	      debuglog("%s: Address:       -  Function: -  ",s->dem_par->name);
+	    }
 	    switch (func) {
 	    case 0:
 	      print_msg_numeric(&s->l2.pocsag, string, sizeof(string));
 	      verbprintf(0, "Numeric: %s", string);
+	      debuglog("Numeric: %s", string);
 	      break;
 	    case 1:
 	    case 2:
 	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
-	      verbprintf(0, "Binary:  %s  ", string);
+	      verbprintf(0, "Binary: %s", string);
+	      debuglog("Binary:  %s  ", string);
 	    case 3:
-	      print_msg_alpha(&s->l2.pocsag, string, sizeof(string));
+	      print_msg_alpha(&s->l2.pocsag, string, sizeof(string));	 
 	      verbprintf(0, "Alpha:   %s  ", string);
+	      debuglog("Alpha:   %s  ", string);
 	      break;
 	    default:
 	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
 	      verbprintf(0, "Binary:  %s  ", string);
+	      debuglog("Binary:  %s  ", string);
 	      break;
 	    }
 
-	    if(!sync) verbprintf(2,"<LOST SYNC>");
+	    if(!sync) {
+	      verbprintf(2,"<LOST SYNC>");
+	    }
 	    verbprintf(0,"\n");
+	    debuglog("\n");
         }
     }
 }
@@ -572,7 +626,6 @@ void pocsag_deinit(struct demod_state *s)
                    s->l2.pocsag.pocsag_bits_processed_while_synced,
                    s->l2.pocsag.pocsag_bits_processed_while_not_synced,
                    (100./s->l2.pocsag.pocsag_total_bits_received)*s->l2.pocsag.pocsag_bits_processed_while_synced);
-    fflush(stdout);
 }
 
 static uint32_t
@@ -878,9 +931,9 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
   if (s->l2.pocsag.state == NO_SYNC) {
     s->l2.pocsag.pocsag_bits_processed_while_not_synced++;
     if(is_sync(rx_data)) {
-      printf( "Acquired sync\n");
+      logword(rx_data, -1, -1);
       verbprintf(4, "Aquired sync!\n");
-      fflush(stdout);
+      debuglog( "Acquired sync\n");
       s->l2.pocsag.state = SYNC;
       // Now reset the bit counter so the next word starts from the
       // beginning.
@@ -890,7 +943,8 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
   } else /* is in sync */ {
     // If we receive a new sync word, we start a new batch
     if (is_sync(rx_data)) {
-      printf("Received sync. Resetting.\n");
+      logword(rx_data, -1, -1);
+      debuglog("Received sync. Resetting.\n");
       s->l2.pocsag.rx_bit = 0;
       received_words=0;
       return;
@@ -905,11 +959,14 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
     // We need to keep track of the frame#, since that is
     // used as part of the address calculation
     frame = received_words / 2;
+    logword(rx_data, frame, received_words % 2);
+
     received_words++;
+
 
     // If we receive an IDLE word, any active message is terminated.
     if (is_idle(rx_data)) {
-      printf("f%dw%d: Received IDLE\n",
+      debuglog("f%dw%d: Received IDLE\n",
 	     (received_words - 1) / 2,
 	     (received_words - 1) % 2);
       if (s->l2.pocsag.numnibbles > 0) {
@@ -919,17 +976,14 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	s->l2.pocsag.function = -1;
       }
     } else /* not IDLE */ {
-      printf( "f%dw%d: Received a complete word: %08x CRC: %s, parity: %s\n",
+      debuglog( "f%dw%d: Received a complete word: %08x CRC: %s, parity: %s\n",
 	      (received_words - 1) / 2,
 	      (received_words - 1) % 2,
 	      rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
-      fflush(stdout);
       if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
         {
 	  // Arbitration lost
-	  fflush(stdout);
 	  pocsag_printmessage(s, false);
-	  fflush(stdout);
 	  s->l2.pocsag.numnibbles = 0;
 	  s->l2.pocsag.address = -1;
 	  s->l2.pocsag.function = -1;
@@ -941,16 +995,13 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
       // Then we calculate the address and function
       if(!(rx_data & POCSAG_MESSAGE_DETECTION)) {
 	if (s->l2.pocsag.numnibbles > 0) {
-	  printf("Detected non-message word. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
-	  fflush(stdout);
+	  debuglog("Detected non-message word. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
 	  pocsag_printmessage(s, false);
-	  fflush(stdout);
 	  s->l2.pocsag.numnibbles = 0;
 	}
 	s->l2.pocsag.address = pocsag_getAddress(rx_data, frame);
 	s->l2.pocsag.function = pocsag_getFunction(rx_data);
-	printf("Address: %u Function: %1hhi\n", s->l2.pocsag.address, s->l2.pocsag.function);
-	fflush(stdout);
+	debuglog("Address: %u Function: %1hhi\n", s->l2.pocsag.address, s->l2.pocsag.function);
 	s->l2.pocsag.state = MESSAGE;
       } else /* Message word */ {
 	// If we receive a message word, we just collect the contents, regardless
@@ -960,11 +1011,8 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	  verbprintf(0, "%s: Warning: Message too long\n",
 		     s->dem_par->name);
 	  
-	  fflush(stdout);
-	  printf( "Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
-	  fflush(stdout);
+	  debuglog( "Message too long. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
 	  pocsag_printmessage(s, false);
-	  fflush(stdout);
 	  s->l2.pocsag.numnibbles = 0;
 	  s->l2.pocsag.address = -1;
 	  s->l2.pocsag.function = -1;
@@ -990,24 +1038,24 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
     // go out of sync. We don't HAVE to, since the code above will
     // handle an in-line sync word just fine. But we do anyway.
     if (received_words == 16) {
-      printf( "Received a full batch. Resetting...\n");
+      debuglog( "Received a full batch. Resetting...\n");
       s->l2.pocsag.state = NO_SYNC;
       received_words = 0;
     }
   }
 }
 
-  /* ---------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------- */
 
-  void pocsag_rxbit(struct demod_state *s, int32_t bit)
-  {
-    s->l2.pocsag.rx_data <<= 1;
-    s->l2.pocsag.rx_data |= !bit;
-    verbprintf(9, " %c ", '1'-(s->l2.pocsag.rx_data & 1));
-    if(pocsag_invert_input)
-      do_one_bit(s, ~(s->l2.pocsag.rx_data)); // this tries the inverted signal
-    else
-      do_one_bit(s, s->l2.pocsag.rx_data);
-  }
+void pocsag_rxbit(struct demod_state *s, int32_t bit)
+{
+  s->l2.pocsag.rx_data <<= 1;
+  s->l2.pocsag.rx_data |= !bit;
+  verbprintf(9, " %c ", '1'-(s->l2.pocsag.rx_data & 1));
+  if(pocsag_invert_input)
+    do_one_bit(s, ~(s->l2.pocsag.rx_data)); // this tries the inverted signal
+  else
+    do_one_bit(s, s->l2.pocsag.rx_data);
+}
 
-  /* ---------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------- */
