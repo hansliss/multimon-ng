@@ -977,7 +977,7 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	     (received_words - 1) / 2,
 	     (received_words - 1) % 2);
       if (s->l2.pocsag.numnibbles > 0) {
-	pocsag_printmessage(s, false);
+	pocsag_printmessage(s, true);
 	s->l2.pocsag.numnibbles = 0;
 	s->l2.pocsag.address = -1;
 	s->l2.pocsag.function = -1;
@@ -1003,7 +1003,7 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
       if(!(rx_data & POCSAG_MESSAGE_DETECTION)) {
 	if (s->l2.pocsag.numnibbles > 0) {
 	  debuglog("Detected non-message word. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
-	  pocsag_printmessage(s, false);
+	  pocsag_printmessage(s, true);
 	  s->l2.pocsag.numnibbles = 0;
 	}
 	s->l2.pocsag.address = pocsag_getAddress(rx_data, frame);
@@ -1019,7 +1019,7 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 		     s->dem_par->name);
 	  
 	  debuglog( "Message too long. Saved nibbles: %d\n", s->l2.pocsag.numnibbles);
-	  pocsag_printmessage(s, false);
+	  pocsag_printmessage(s, true);
 	  s->l2.pocsag.numnibbles = 0;
 	  s->l2.pocsag.address = -1;
 	  s->l2.pocsag.function = -1;
