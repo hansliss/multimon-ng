@@ -98,9 +98,9 @@ extern bool fms_justhex;
 extern int pocsag_invert_input;
 extern int pocsag_error_correction;
 extern int pocsag_show_partial_decodes;
-extern int pocsag_heuristic_pruning;
 extern int pocsag_prune_empty;
 extern bool pocsag_init_charset(char *charset);
+extern char *pocsag_wordlog_filename;
 
 extern int aprs_mode;
 extern int cw_dit_length;
@@ -613,14 +613,12 @@ static const char usage_str[] = "\n"
         "  -n         : Don't flush stdout, increases performance.\n"
         "  -j         : FMS: Just output hex data and CRC, no parsing.\n"
         "  -e         : POCSAG: Hide empty messages.\n"
-        "  -u         : POCSAG: Heuristically prune unlikely decodes.\n"
         "  -i         : POCSAG: Inverts the input samples. Try this if decoding fails.\n"
         "  -p         : POCSAG: Show partially received messages.\n"
-        "  -f <mode>  : POCSAG: Overrides standards and forces decoding of data as <mode>\n"
-        "                       (<mode> can be 'numeric', 'alpha', 'skyper' or 'auto')\n"
         "  -b <level> : POCSAG: BCH bit error correction level. Set 0 to disable, default is 2.\n"
         "                       Lower levels increase performance and lower false positives.\n"
         "  -C <cs>    : POCSAG: Set Charset.\n"
+        "  -W <file>  : POCSAG: Log all received words to CSV file <file>.\n"
         "  -o         : CW: Set threshold for dit detection (default: 500)\n"
         "  -d         : CW: Dit length in ms (default: 50)\n"
         "  -g         : CW: Gap length in ms (default: 50)\n"
@@ -652,7 +650,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
       };
 
-    while ((c = getopt_long(argc, argv, "t:a:s:v:f:b:C:o:d:g:cqhAmrnjeuipxyL:", long_options, NULL)) != EOF) {
+    while ((c = getopt_long(argc, argv, "t:a:s:v:b:C:o:d:g:cqhAmrnjeipxyL:W:", long_options, NULL)) != EOF) {
         switch (c) {
         case 'h':
         case '?':
@@ -689,10 +687,6 @@ int main(int argc, char *argv[])
 
         case'p':
             pocsag_show_partial_decodes = 1;
-            break;
-
-        case'u':
-            pocsag_heuristic_pruning = 1;
             break;
 
         case'e':
@@ -800,6 +794,10 @@ intypefound:
             if(i) cw_threshold = abs(i);
             break;
         }
+
+	case 'W':
+	  pocsag_wordlog_filename = optarg;
+	  break;
             
         case 'x':
             cw_disable_auto_threshold = true;

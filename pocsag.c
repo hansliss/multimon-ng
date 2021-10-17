@@ -64,8 +64,8 @@
 int pocsag_invert_input = 0;
 int pocsag_error_correction = 2;
 int pocsag_show_partial_decodes = 0;
-int pocsag_heuristic_pruning = 0;
 int pocsag_prune_empty = 0;
+char *pocsag_wordlog_filename=NULL;
 
 /* ---------------------------------------------------------------------- */
 
@@ -135,7 +135,14 @@ void debuglog(char *format, ...) {
 }
 
 void logword(uint32_t word, int frame, int fword) {
-  FILE *csvFile = fopen("pocsag_words.csv", "a");
+  if (!pocsag_wordlog_filename) {
+    return;
+  }
+  FILE *csvFile = fopen(pocsag_wordlog_filename, "a");
+  if (!csvFile) {
+    perror(pocsag_wordlog_filename);
+    exit(-99);
+  }
   char time_buf[20];
   time_t t;
   struct tm* tm_info;
