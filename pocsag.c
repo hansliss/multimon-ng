@@ -526,7 +526,7 @@ static void print_msg_binary(struct l2_state_pocsag *rx, char* buff, unsigned in
       bp++;
       size--;
     }
-    len = sprintf(bp, "%02x", rx->buffer[i]);
+    len = sprintf(bp, "%02x", rx->buffer[i/2]);
     size -= len;
     bp += len;
   }
@@ -578,7 +578,7 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
 	    case 1:
 	    case 2:
 	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
-	      verbprintf(0, "Binary: %s", string);
+	      verbprintf(0, "Binary: %s  ", string);
 	      debuglog("Binary:  %s  ", string);
 	    case 3:
 	      print_msg_alpha(&s->l2.pocsag, string, sizeof(string));	 
