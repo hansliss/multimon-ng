@@ -42,6 +42,12 @@
 //#define CHARSET_LATIN1
 //#define CHARSET_UTF8 //ÄÖÜäöüß
 
+#define ASCII_NUL 0x00
+#define ASCII_ETX 0x03
+#define ASCII_EOT 0x04
+#define ASCII_ETB 0x17
+#define ASCII_EM 0x19
+
 /* ---------------------------------------------------------------------- */
 
 
@@ -66,6 +72,7 @@ int pocsag_error_correction = 2;
 int pocsag_show_partial_decodes = 0;
 int pocsag_prune_empty = 0;
 char *pocsag_wordlog_filename=NULL;
+char *pocsag_debug_filename=NULL;
 
 /* ---------------------------------------------------------------------- */
 
@@ -112,7 +119,14 @@ static inline unsigned char even_parity(uint32_t data)
 
 void debuglog(char *format, ...) {
   static int is_startline = 1;
-  FILE *debugFile = fopen("pocsag_debug.log", "a");
+  if (!pocsag_debug_filename) {
+    return;
+  }
+  FILE *debugFile = fopen(pocsag_debug_filename, "a");
+  if (!debugFile) {
+    perror(pocsag_debug_filename);
+    exit(-99);
+  }
   char time_buf[20];
   time_t t;
   struct tm* tm_info;
@@ -467,6 +481,9 @@ static void print_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned i
 
 static void print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
+  static char workbuf[8192];
+  int wblen = sizeof(workbuf);
+  int wbcur = 0;
     uint32_t data = 0;
     int datalen = 0;
     unsigned char *bp = rx->buffer;
@@ -476,6 +493,8 @@ static void print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int
     unsigned char curchr;
     char *tstr;
 
+    // Since we want to strip terminating NULs and other termination characters,
+    // we save the raw ASCII in a temporary buffer first.
     while (len > 0)
     {
         while (datalen < 7 && len > 0) {
@@ -497,20 +516,40 @@ static void print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int
         curchr = ((curchr & 0xcc) >> 2) | ((curchr & 0x33) << 2);
         curchr = ((curchr & 0xaa) >> 1) | ((curchr & 0x55) << 1);
 
-        tstr = translate_alpha(curchr);
-        if (tstr)
-        {
-            int tlen = strlen(tstr);
-            if (buffree >= tlen)
-            {
-                memcpy(cp, tstr, tlen);
-                cp += tlen;
-                buffree -= tlen;
-            }
-        } else if (buffree > 0) {
-            *cp++ = curchr;
-            buffree--;
-        }
+	if (wbcur < wblen-1) {
+	  workbuf[wbcur++] = curchr;
+	}
+    }
+
+    // Once we're done putting the string in the temporary
+    // buffer, we can strip off any termination characters
+    // at the end of the string. The temporary buffer doesn'
+    // need to be NUL-terminated.
+    while(wbcur > 0 &&
+	  (workbuf[wbcur-1] == ASCII_NUL ||
+	   workbuf[wbcur-1] == ASCII_ETX ||
+	   workbuf[wbcur-1] == ASCII_EOT ||
+	   workbuf[wbcur-1] == ASCII_ETB ||
+	   workbuf[wbcur-1] == ASCII_EM)) {
+      wbcur--;
+    }
+
+    // Finally, we go through the temporary buffer and
+    // translate each character using the selected
+    // translation table, and produce the final text.
+    for (int i = 0; i < wbcur; i++) {
+      tstr = translate_alpha(workbuf[i]);
+      if (tstr) {
+	int tlen = strlen(tstr);
+	if (buffree >= tlen) {
+	  memcpy(cp, tstr, tlen);
+	  cp += tlen;
+	  buffree -= tlen;
+	}
+      } else if (buffree > 0) {
+	*cp++ = curchr;
+	buffree--;
+      }
     }
     *cp = '\0';
 }
@@ -928,6 +967,9 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
   // we want to terminate a batch after 16 words.
   static int received_words=0;
   int frame=0;
+
+  //  printf("%08x\n", rx_data);
+  //  fflush(stdout);
   
   s->l2.pocsag.pocsag_total_bits_received++;
   
@@ -1047,7 +1089,7 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
     // go out of sync. We don't HAVE to, since the code above will
     // handle an in-line sync word just fine. But we do anyway.
     if (received_words == 16) {
-      debuglog( "Received a full batch. Resetting...\n");
+      debuglog( "End of batch.\n");
       s->l2.pocsag.state = NO_SYNC;
       received_words = 0;
     }

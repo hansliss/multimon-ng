@@ -101,6 +101,7 @@ extern int pocsag_show_partial_decodes;
 extern int pocsag_prune_empty;
 extern bool pocsag_init_charset(char *charset);
 extern char *pocsag_wordlog_filename;
+extern char *pocsag_debug_filename;
 
 extern int aprs_mode;
 extern int cw_dit_length;
@@ -650,7 +651,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
       };
 
-    while ((c = getopt_long(argc, argv, "t:a:s:v:b:C:o:d:g:cqhAmrnjeipxyL:W:", long_options, NULL)) != EOF) {
+    while ((c = getopt_long(argc, argv, "t:a:s:v:b:C:o:d:g:cqhAmrnjeipxyL:W:D:", long_options, NULL)) != EOF) {
         switch (c) {
         case 'h':
         case '?':
@@ -797,6 +798,10 @@ intypefound:
 
 	case 'W':
 	  pocsag_wordlog_filename = optarg;
+	  break;
+            
+	case 'D':
+	  pocsag_debug_filename = optarg;
 	  break;
             
         case 'x':
