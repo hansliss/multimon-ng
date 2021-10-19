@@ -460,7 +460,7 @@ static char *translate_alpha(unsigned char chr)
 
 /* ---------------------------------------------------------------------- */
 
-static void print_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+static void prepare_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
     static const char *conv_table = "084 2.6]195-3U7[";
     unsigned char *bp = rx->buffer;
@@ -479,7 +479,7 @@ static void print_msg_numeric(struct l2_state_pocsag *rx, char* buff, unsigned i
     cp = buff;
 }
 
-static void print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+static void prepare_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
   static char workbuf[8192];
   int wblen = sizeof(workbuf);
@@ -554,7 +554,7 @@ static void print_msg_alpha(struct l2_state_pocsag *rx, char* buff, unsigned int
     *cp = '\0';
 }
 
-static void print_msg_binary(struct l2_state_pocsag *rx, char* buff, unsigned int size)
+static void prepare_msg_binary(struct l2_state_pocsag *rx, char* buff, unsigned int size)
 {
   char *bp = buff;
   int len;
@@ -610,22 +610,22 @@ static void pocsag_printmessage(struct demod_state *s, bool sync)
 	    }
 	    switch (func) {
 	    case 0:
-	      print_msg_numeric(&s->l2.pocsag, string, sizeof(string));
+	      prepare_msg_numeric(&s->l2.pocsag, string, sizeof(string));
 	      verbprintf(0, "Numeric: %s", string);
 	      debuglog("Numeric: %s", string);
 	      break;
 	    case 1:
 	    case 2:
-	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
+	      prepare_msg_binary(&s->l2.pocsag, string, sizeof(string));
 	      verbprintf(0, "Binary:  %s  ", string);
 	      debuglog("Binary:  %s  ", string);
 	    case 3:
-	      print_msg_alpha(&s->l2.pocsag, string, sizeof(string));	 
+	      prepare_msg_alpha(&s->l2.pocsag, string, sizeof(string));	 
 	      verbprintf(0, "Alpha:   %s", string);
 	      debuglog("Alpha:   %s", string);
 	      break;
 	    default:
-	      print_msg_binary(&s->l2.pocsag, string, sizeof(string));
+	      prepare_msg_binary(&s->l2.pocsag, string, sizeof(string));
 	      verbprintf(0, "Binary:  %s  ", string);
 	      debuglog("Binary:  %s  ", string);
 	      break;
