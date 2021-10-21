@@ -8,7 +8,7 @@ NUL and some other termination characters at the end of Alpha strings are now re
 
 Logging is now done in multiple ways:
 * The original "verbprintf()" logging to stdout is intact, but has been complemented with a file log that includes today's day in the file name, to produce a new logfile every day. See TODO.
-* There is a debug log that logs received POCSAG words including frame- and word-within-frame number, as well as CRC and parity check results, end of batch, acquired sync, and the received message. This is useful for verifying that the decoder logic is working properly.
+* There is a debug log that logs received POCSAG words including frame and word-within-frame number, as well as CRC and parity check results, end of batch, acquired sync, and the received message. This is useful for verifying that the decoder logic is working properly.
 * There is one additional log, a CSV file that just contains all received raw words, frame number word-in-frame, crc check and parity check, comma-separated. From this you can extract sequences of words for analysis with other programs.
 
 The latter logfiles are optional ("-D" and "-W", respectively) and they both contain timestamps on every line.
