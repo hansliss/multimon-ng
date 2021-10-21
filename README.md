@@ -7,17 +7,19 @@ Some of the textual representations of control characters have been replaced wit
 NUL and some other termination characters at the end of Alpha strings are now removed, as specified in the standard.
 
 Logging is now done in multiple ways:
-* The original "verbprintf()" logging to stdout is intact, but has been complemented with a file log that includes today's day in the file name, to produce a new logfile every day. See TODO.
-* There is a debug log that logs received POCSAG words including frame and word-within-frame number, as well as CRC and parity check results, end of batch, acquired sync, and the received message. This is useful for verifying that the decoder logic is working properly.
-* There is one additional log, a CSV file that just contains all received raw words, frame number word-in-frame, crc check and parity check, comma-separated. From this you can extract sequences of words for analysis with other programs.
+* The original "verbprintf()" logging to stdout is intact, but has been complemented with a file log that includes today's date in the file name, to produce a new logfile every day. See TODO.
+* There is a debug log that logs received POCSAG words including frame and word-within-frame number, as well as CRC and parity check results, end of batch, acquired sync, and the received message. This is useful for verifying that the decoder logic is working properly, and to figure out exactly what goes wrong when it doesn't.
+* There is one additional log, a CSV file that just contains all received raw words, frame number, word in frame, crc check and parity check, comma-separated. From this you can extract sequences of words for analysis with other programs. Notice that any word with MSB set is a message word, all others are either address words, SYNC or IDLE.
 
-The latter logfiles are optional ("-D" and "-W", respectively) and they both contain timestamps on every line.
+The latter two logfiles are optional ("-D" and "-W", respectively) and they both contain timestamps on every line.
 
 ### TODO
-* Improve the logging options to better accommodate running multimon-ng (for POCSAG) as a background daemon.
+* Improve the logging options to better accommodate running multimon-ng (for POCSAG) as a background daemon. Make stdout output optional and make it possible to log to a single logfile instead of one per day.
 * Implement a UDP listener and make multimon-ng accept sample rate as a command-line option, to make it possible to receive data directly from a UDP radio/audio source.
 
 2021, Hans Liss (Hans@Liss.pp.se) & Fredrik Liss
+
+Original README
 ---------------------------------------------------
 multimon-ng is the successor of multimon. It decodes the following digital transmission modes:
 
