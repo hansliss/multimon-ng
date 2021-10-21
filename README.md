@@ -1,3 +1,24 @@
+## Changes in this fork
+The POCSAG decoder has been completely rewritten to ensure that it reliably decodes the protocol according to the standard. The "brute force" error correction is unchanged, but there are additional/redundant functions to calculate CRC and parity - because we can.
+While doing this, we took a few shortcuts, mainly that the guessing of message types was removed, and locked to Numeric for Function 0 and Alpha for function 3. Function 1 & 2 is now interpreted as Binary, yielding a hex dump in the log as well as an attempt at Alpha decode.
+
+Some of the textual representations of control characters have been replaced with shorter C-style strings, for readability.
+
+NUL and some other termination characters at the end of Alpha strings are now removed, as specified in the standard.
+
+Logging is now done in multiple ways:
+* The original "verbprintf()" logging to stdout is intact, but has been complemented with a file log that includes today's day in the file name, to produce a new logfile every day. See TODO.
+* There is a debug log that logs received POCSAG words including frame- and word-within-frame number, as well as CRC and parity check results, end of batch, acquired sync, and the received message. This is useful for verifying that the decoder logic is working properly.
+* There is one additional log, a CSV file that just contains all received raw words, frame number word-in-frame, crc check and parity check, comma-separated. From this you can extract sequences of words for analysis with other programs.
+
+The latter logfiles are optional ("-D" and "-W", respectively) and they both contain timestamps on every line.
+
+### TODO
+* Improve the logging options to better accommodate running multimon-ng (for POCSAG) as a background daemon.
+* Implement a UDP listener and make multimon-ng accept sample rate as a command-line option, to make it possible to receive data directly from a UDP radio/audio source.
+
+2021, Hans Liss (Hans@Liss.pp.se) & Fredrik Liss
+---------------------------------------------------
 multimon-ng is the successor of multimon. It decodes the following digital transmission modes:
 
 - POCSAG512 POCSAG1200 POCSAG2400
