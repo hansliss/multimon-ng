@@ -1,0 +1,6 @@
+pocsag_crc will check CRC of POCSAG words given on the command line. The source contains a version of the "syndrome" calculation function from the multimon-ng pocsag.c plus my own implementation of CRC calculation based on other sources.
+pocsag_decode will read a list of POCSAG words from stdin and decode any non-address words as text. It does *not* do any localized translations, or pretty-printing of control codes. Note: pocsag_decode isn't very useful if you mix words from different messages! It's recommended that you save words from each message in separate files.
+
+gcc -Wall pocsag_crc.c -o pocsag_crc
+gcc -Wall pocsag_decode.c -o pocsag_decode
+
