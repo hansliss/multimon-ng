@@ -11,7 +11,7 @@ Logging is now done in multiple ways:
 * There is a debug log that logs received POCSAG words including frame and word-within-frame number, as well as CRC and parity check results, end of batch, acquired sync, and the received message. This is useful for verifying that the decoder logic is working properly, and to figure out exactly what goes wrong when it doesn't.
 * There is one additional log, a CSV file that just contains all received raw words, frame number, word in frame, crc check and parity check, comma-separated. From this you can extract sequences of words for analysis with other programs. Notice that any word with MSB set is a message word, all others are either address words, SYNC or IDLE.
 
-The latter two logfiles are optional ("-D" and "-W", respectively) and they both contain timestamps on every line.
+These new logging mechanisms are optional ("-L <logdir>", "-D <debug log file>" and "-W <word CSV log>", respectively) and they both contain timestamps on every line.
 
 ### TODO
 * Improve the logging options to better accommodate running multimon-ng (for POCSAG) as a background daemon. Make stdout output optional and make it possible to log to a single logfile instead of one per day.
