@@ -30,6 +30,7 @@
 #include "multimon.h"
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -164,7 +165,7 @@ void logword(uint32_t word, int frame, int fword) {
   t = time(NULL);
   tm_info = localtime(&t);
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
-  fprintf(csvFile, "%s,%d,%d,%d,%d,%08x\n", time_buf, frame, fword, check_crc(word), check_parity(word), word);
+  fprintf(csvFile, "%s,%d,%d,%d,%d,%08" PRIx32 "\n", time_buf, frame, fword, check_crc(word), check_parity(word), word);
   fclose(csvFile);
 }
 
@@ -1025,7 +1026,7 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	s->l2.pocsag.function = -1;
       }
     } else /* not IDLE */ {
-      debuglog( "f%dw%d: Received a complete word: %08x CRC: %s, parity: %s\n",
+      debuglog( "f%dw%d: Received a complete word: %08" PRIx32 " CRC: %s, parity: %s\n",
 	      (received_words - 1) / 2,
 	      (received_words - 1) % 2,
 	      rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
