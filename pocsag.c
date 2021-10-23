@@ -967,7 +967,7 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
   // We need to keep track of the number of words we've received, since
   // we want to terminate a batch after 16 words.
   static int received_words=0;
-  int frame=0;
+  int frame=0, wif=0;
 
   //  printf("%08x\n", rx_data);
   //  fflush(stdout);
@@ -1009,16 +1009,14 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
     // We need to keep track of the frame#, since that is
     // used as part of the address calculation
     frame = received_words / 2;
+    wif = received_words % 2;
     logword(rx_data, frame, received_words % 2);
 
     received_words++;
 
-
     // If we receive an IDLE word, any active message is terminated.
     if (is_idle(rx_data)) {
-      debuglog("f%dw%d: Received IDLE\n",
-	     (received_words - 1) / 2,
-	     (received_words - 1) % 2);
+      debuglog("f%dw%d: Received IDLE\n", frame, wif);
       if (s->l2.pocsag.numnibbles > 0) {
 	pocsag_printmessage(s, true);
 	s->l2.pocsag.numnibbles = 0;
@@ -1026,10 +1024,9 @@ static void do_one_bit(struct demod_state *s, uint32_t rx_data) {
 	s->l2.pocsag.function = -1;
       }
     } else /* not IDLE */ {
-      debuglog( "f%dw%d: Received a complete word: %08" PRIx32 " CRC: %s, parity: %s\n",
-	      (received_words - 1) / 2,
-	      (received_words - 1) % 2,
-	      rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
+      debuglog("f%dw%d: Received a complete word: %08" PRIx32 " CRC: %s, parity: %s\n",
+	       frame, wif,
+	       rx_data, check_crc(rx_data)?"OK":"FAIL", check_parity(rx_data)?"OK":"FAIL");
       if(pocsag_brute_repair(&s->l2.pocsag, &rx_data))
         {
 	  // Arbitration lost
