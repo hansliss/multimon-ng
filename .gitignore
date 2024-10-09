@@ -43,3 +43,4 @@ Thumbs.db
 # Tool cache #
 ##############
 *.sw[op]
+tools/pocsag_decode
